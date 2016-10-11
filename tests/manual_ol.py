@@ -1,7 +1,7 @@
 #! /usr/bin/env python
 
 ##########################################################################################
-# manual_ol_swing.py
+# manual_ol.py
 #
 # Derived from BBB_tm_Full.py
 # Manual operation of the excavator. Begins recording data and timestamps
@@ -16,15 +16,22 @@
 #   - allain.mitch@gmail.com
 #
 # Modified:
+#   * October 10, 2016 - added generated datastamp from datetime module
 #   *
 #
 ##########################################################################################
 
 from manual import *
 
+
 def swing_update(swing_js, time, swing_angle):
-    if swing_js > 0.01 or swing_js < -0.01:
-            swing_angle = swing_angle - (time)*swing_js*0.5
+    '''Open-loop estimator for swing angle'''
+
+    # Below is unnecessary with control deadzones applied:
+    # threshold = 0.05 # Swing JS
+    # if swing_js > 0.01 or swing_js < -0.01:
+
+    swing_angle = swing_angle - (time)*swing_js*0.5
     return swing_angle
 
 
@@ -32,15 +39,26 @@ if __name__ == "__main__":
 
     # Measurement initialization
     ADC.setup()
-    
+
     # Create a socket (SOCK_STREAM means a TCP socket)
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    
+
+    # Optional generated name
+    gen_name = name_date_time(__file__)
+
     # Data saving interface
-    f_name = raw_input('Name the output file (end with .csv) or press return for no data: ')
-    
+    f_name = raw_input("Name the output file (end with .csv), or enter 'y' to accept '" + gen_name + "'.\n"
+                       + "Leave blank for no data recording.\n")
+
     if f_name == '':
         print('No data storage selected.')
+    elif f_name == 'y' or f_name == 'Y':
+        f_name = gen_name
+        try:
+            f = open('data/'+f_name, 'w')
+        except IOError:
+            print('IOError')
+        f.write('Time,Boom JS,Stick JS,Bucket JS,Swing JS,Boom Cmd,Stick Cmd,Bucket Cmd,Swing Cmd,Boom Ms,Stick Ms,Bucket Ms,Swing Ms\n')
     elif f_name[-4:] != '.csv':
         print("\nPlease use '.csv' extension")
         quit()
@@ -50,28 +68,28 @@ if __name__ == "__main__":
         except IOError:
             print('IOError')
         f.write('Time,Boom JS,Stick JS,Bucket JS,Swing JS,Boom Cmd,Stick Cmd,Bucket Cmd,Swing Cmd,Boom Ms,Stick Ms,Bucket Ms,Swing Ms\n')
-    
+
     # Initialize swing_angle and swing_start
     swing_angle = 0.0
     swing_start = time.time()
     received_parsed = [0, 0, 0, 0]
-    
+
     # start the data clock
     start = time.time()
-    
+
     try:
         # Connect to server and send data
         sock.connect((HOST, PORT))
         while True:
             # Old swing joystick input for estimator
             old_swing_js = received_parsed[1]
-            
+
             # Receive data from the server
-            received_joysticks = sock.recv(4096)
-    
+            # received_joysticks = sock.recv(4096)
+
             # Parse data
             try:
-                received_parsed = parser(received_joysticks)
+                received_parsed = parser(sock.recv(4096), received_parsed)
             except ValueError:
                 pass
 
@@ -80,22 +98,22 @@ if __name__ == "__main__":
             arm_duty_cycle_input = arm.duty_span*(received_parsed[3] + 1)/(2) + arm.duty_min
             bucket_duty_cycle_input = bucket.duty_span*(-received_parsed[0] + 1)/(2) + bucket.duty_min
             swing_duty_cycle_input = swing.duty_span*(received_parsed[1] + 1)/(2) + swing.duty_min
-    
+
             # Update PWM
             print boom_duty_cycle_input, arm_duty_cycle_input, bucket_duty_cycle_input, swing_duty_cycle_input
             # print boom_duty_cycle_input, swing_duty_cycle_input
             PWM.set_duty_cycle(boom.servo_pin, boom_duty_cycle_input)
             PWM.set_duty_cycle(arm.servo_pin, arm_duty_cycle_input)
             PWM.set_duty_cycle(bucket.servo_pin, bucket_duty_cycle_input)
-            
+
             # Swing estimator needs clock right before and after update.
             swing_end = time.time()
             swing_angle = swing_update(old_swing_js, (swing_end-swing_start), swing_angle)
-    
+
             # Set swing PWM and update clock
             PWM.set_duty_cycle(swing.servo_pin, swing_duty_cycle_input)
             swing_start = time.time()
-    
+
             # Data Logging
             try:
                 f.write(str(time.time()-start) + ',' +          # Time
@@ -113,7 +131,7 @@ if __name__ == "__main__":
                         str(swing_angle) + '\n')                # Swing Ms
             except NameError:
                 pass
-    
+
     except KeyboardInterrupt:
         print '\nQuitting'
     finally:

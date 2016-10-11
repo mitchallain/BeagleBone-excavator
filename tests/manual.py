@@ -14,7 +14,7 @@
 #   - allain.mitch@gmail.com
 #
 # Modified:
-#   *
+#   * October 06, 2016, deadzone joysticks in parser function
 #
 ##########################################################################################
 
@@ -23,10 +23,12 @@ import Adafruit_BBIO.ADC as ADC
 import numpy as np
 import socket
 import time
+import datetime
+import os
 
 
 class Servo():
-    '''Dr. Vaughan's Servo class for creating PWM signals'''
+    '''Servo class stores pin info and duty limits'''
     def __init__(self, servo_pin, duty_min, duty_max):
         self.duty_min = duty_min
         self.duty_max = duty_max
@@ -36,6 +38,11 @@ class Servo():
         self.servo_pin = servo_pin
         print 'starting servo PWM'
         PWM.start(self.servo_pin, self.duty_mid, 50.625)
+
+    def update_servo(self, duty_cycle):
+        '''Saturate duty cycle at limits'''
+        duty_cycle_clamp = max(self.duty_min, min(self.duty_max, duty_cycle))
+        PWM.set_duty_cycle(duty_cycle_clamp)
 
     def close_servo(self):
         PWM.stop(self.servo_pin)
@@ -58,21 +65,33 @@ def interpolate(pot_reading, actuator):
         return np.interp(pot_reading, x, y)
 
 
-def parser(received):
+def parser(received, received_parsed):
     '''Parse joystick data from server_02.py, and convert to float'''
+    deadzone = 0.1
     try:
         received = received.translate(None, "[( )]").split(',')
-        received_parsed = [float(i) for i in received]
+        for axis in range(len(received)):
+            if (float(received[axis]) > deadzone) or (float(received[axis]) < -deadzone):
+                received_parsed[axis] = float(received[axis])
+            else:
+                received_parsed[axis] = 0
         return received_parsed
     except ValueError:
         print '\nValue Error'
         raise ValueError
 
 
+def name_date_time(file_name):
+    '''Returns string of format __file__ + '_mmdd_hhmm.csv' '''
+    n = datetime.datetime.now()
+    data_stamp = os.path.basename(file_name)[:-3] + '_' + n.strftime('%m%d_%H%M')+'.csv'
+    return data_stamp
+
+
 # Networking details
 HOST, PORT = '192.168.7.1', 9999
 
-# Functions (Servos and PWM BESC)
+# Initialize PMM Functions (Servos and PWM BESC)
 boom = Servo("P9_22", 4.939, 10.01)
 arm = Servo("P8_13", 4.929, 8.861)
 bucket = Servo("P8_34", 5.198, 10.03)
@@ -112,7 +131,7 @@ if __name__ == "__main__":
             # Receive data from the server
             received_joysticks = sock.recv(4096)
 
-            # Parse data
+            # Parse data (and apply joystick deadzone)
             try:
                 received_parsed = parser(received_joysticks)
             except ValueError:
@@ -123,7 +142,6 @@ if __name__ == "__main__":
             arm_duty_cycle_input = arm.duty_span*(received_parsed[3] + 1)/(2) + arm.duty_min
             bucket_duty_cycle_input = bucket.duty_span*(-received_parsed[0] + 1)/(2) + bucket.duty_min
             swing_duty_cycle_input = swing.duty_span*(received_parsed[1] + 1)/(2) + swing.duty_min
-
 
             # Data Logging
             try:
