@@ -40,7 +40,7 @@ class Servo():
     def update_servo(self):
         '''Saturate duty cycle at limits'''
         self.duty_set = max(self.duty_min, min(self.duty_max, self.duty_set))
-        PWM.set_duty_cycle(self.duty_set)
+        PWM.set_duty_cycle(self.servo_pin, self.duty_set)
 
     def close_servo(self):
         PWM.stop(self.servo_pin)

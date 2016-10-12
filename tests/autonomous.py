@@ -52,12 +52,13 @@ from PID import PID
 ADC.setup()
 
 # Initialize PWM/servo classes and measurement classes
-temp = excavator.setup()
+temp = exc_setup()
 actuators = temp[0]
 measurements = temp[1]
 
 # Create some trajectories
-task = [[4.5, [74.7, 8, 6, -2]]]
+trajectory_1 = [[4.5, [7.47, 0.6, 0.8, -0.2]], [0, [0, 0, 0, 0]], [0, [0, 0, 0, 0]], [0, [0, 0, 0, 0]]]
+task = [trajectory_1]
 
 # Create a socket (SOCK_STREAM means a TCP socket)
 # sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -88,7 +89,7 @@ for b in measurements:
     b.update_measurement()
 
 # PI Controllers for each actuator
-boom_PI = PID(0.5, 1, 0, 0, 10, -10)
+boom_PI = PID(1.25, 0, 0, 0, 10, -10)
 stick_PI = PID(0, 0, 0, 0, 10, -10)
 bucket_PI = PID(0, 0, 0, 0, 10, -10)
 swing_PI = PID(0, 0, 0, 0, 10, -10)
@@ -100,48 +101,64 @@ endpoint_error = [0, 0, 0, 0]
 
 try:
     for trajectory in task:
+        # Initialize integrator and derivator to zero
+        for c in controllers:
+            c.setIntegrator(0)
+            c.setDerivator(0)
+
+        # Determine endpoints for each *active* actuator and an endpoint error vector (actuator space)
         for i in range(4):
-            endpoint[i] = poly.polyval(trajectory[i][0], trajectory[i][1])
-            endpoint_error[i] = measurements[i].value - endpoint[i]
+            if trajectory[i][0] == 0:
+                endpoint_error[i] = 0
+            else:
+                endpoint[i] = poly.polyval(trajectory[i][0], trajectory[i][1])
+                endpoint_error[i] = measurements[i].value - endpoint[i]
+                endtime = trajectory[i][0]
 
+        # Time markers
         traj_start = time.time()
-
-        while np.linalg.norm(endpoint_error) > 1:    # 1 cm radius ball about endpoint
-            loopstart = time.time()
-
+        loop_start = time.time()
+    
+        while np.linalg.norm(endpoint_error) > 1 or (loop_start-traj_start) < endtime:    # 1 cm radius ball about endpoint
+            loop_start = time.time()
+    
             # Measurement
             for b in measurements:
                 b.update_measurement()
-
+    
             # Set point update and PI output
             for i in range(4):
+                if trajectory[i][0] != 0:
+                    # Change set point only if still within valid trajectory window
+                    if (time.time() - traj_start) < trajectory[i][0]:
+                        controllers[i].setPoint(poly.polyval((time.time()-traj_start), trajectory[i][1]))
+                        
 
-                # Change set point only if still within valid trajectory window
-                if (time.time() - traj_start) < trajectory[i][0]:
-                    controllers[i].setPoint(poly.polyval((time.time()-traj_start), trajectory[i][1]))
-
-                # Update actuators with control action and endpoint error
-                actuators[i].duty_set = actuators[i].duty_span*(controllers[i].update(measurements[i].value) + 0.5) + actuators[i].duty_mid
-                endpoint_error[i] = measurements[i].value - endpoint[i]
-
+                    # Update actuators with control action and endpoint error
+                    # actuators[i].duty_set = actuators[i].duty_span*(controllers[i].update(measurements[i].value) + 1)/2 + actuators[i].duty_mid
+                    actuators[i].duty_set = controllers[i].update(measurements[i].value) + actuators[i].duty_mid
+                    print(controllers[i].P_value + controllers[i].I_value + controllers[i].D_value)
+                    endpoint_error[i] = measurements[i].value - endpoint[i]
+    
             # Update PWM, saturation implemented in Servo class
             for a in actuators:
-                # a.update_servo()
-                print(a.actuator_name + ': ', a.duty_set, '\n')
-
+                a.update_servo()
+                print(a.actuator_name + ': ' + str(a.duty_set))
+        
+    
         # # Error signal
         # ref = poly.polyval((time.time()-start), coeff)
         # e = ref - boom_ms
-
+    
         # # Generate control signals
         # boom_duty_cycle = boom.duty_span*((e/10) + 1)/(2) + boom.duty_min
         # boom_duty_cycle_input = saturate(boom_duty_cycle, 4.939, 10.01)
         # PWM.set_duty_cycle(boom.servo_pin, boom_duty_cycle_input)
         # print(e, boom_duty_cycle_input)
-
+    
             # Data Logging
             try:
-                f.write(str(loopstart - start) + ',' +                # Time
+                f.write(str(loop_start - start) + ',' +                # Time
                         str(controllers[0].getError()) + ',' +        # Boom e
                         str(controllers[1].getError()) + ',' +        # Stick e
                         str(controllers[2].getError()) + ',' +        # Bucket e
@@ -160,9 +177,9 @@ except KeyboardInterrupt:
     print '\nQuitting'
 finally:
     print '\nClosing PWM signals...'
-    for a in actuator:
+    for a in actuators:
         a.duty_set = a.duty_mid
         a.update_servo()
     time.sleep(1)
-    for a in actuator:
+    for a in actuators:
         a.close_servo()
