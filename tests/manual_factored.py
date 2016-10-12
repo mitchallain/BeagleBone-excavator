@@ -1,7 +1,7 @@
 #! /usr/bin/env python
 
 ##########################################################################################
-# manual.py
+# manual_factored.py
 #
 # Derived from BBB_tm_Full.py
 # Manual operation of the excavator. Begins recording data and timestamps

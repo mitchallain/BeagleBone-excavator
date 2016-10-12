@@ -18,3 +18,4 @@
 
 from manual import *
 import numpy.polynomial.polynomial as poly
+

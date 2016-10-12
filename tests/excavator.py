@@ -68,10 +68,11 @@ class Measurement():
 class Estimator():  # Obviously unfinished haha
     '''Temporary class until encoder arrives'''
     def __init__(self):
-        self.estimation = 0
+        self.value = 0
+        self.measure_type = 'swing'
 
     def update_measurement(self):
-        self.estimation = 0
+        self.value = 0
 
 
 def parser(received, received_parsed):
@@ -112,3 +113,13 @@ def exc_setup():
     swing_est = Estimator()
     measurements = [boom_ms, stick_ms, bucket_ms, swing_est]
     return actuators, measurements
+
+
+def measurement_setup():
+    '''Instantiate only the measurement classes'''
+    boom_ms = Measurement('P9_37', 'boom')
+    stick_ms = Measurement('P9_33', 'stick')
+    bucket_ms = Measurement('P9_35', 'bucket')
+    swing_est = Estimator()
+    measurements = [boom_ms, stick_ms, bucket_ms, swing_est]
+    return measurements
