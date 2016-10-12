@@ -15,6 +15,7 @@
 #
 # Modified:
 #   * October 06, 2016, deadzone joysticks in parser function
+#   * October 11, 2016, factored out code into measurement class, modified servo class, MUCH BETTER
 #
 ##########################################################################################
 
@@ -50,20 +51,37 @@ class Servo():
         PWM.cleanup()
 
 
-def interpolate(pot_reading, actuator):
-    '''Use lookup tables to interpolate actuator position in mm from string pot voltage'''
-    if actuator == 'boom':
-        y = [0, 7.89, 14.32, 22.64, 33.27, 44.05, 56.85, 73.62, 87.54, 98.1, 107.14, 115.34, 118.27]
-        x = [536.0, 564.0, 590.0, 627.0, 667.0, 707.0, 753.0, 806.0, 845.0, 872.0, 895.0, 916.0, 923.0]
-        return np.interp(pot_reading, x, y)
-    elif actuator == 'stick':
-        y = [0, 16.28, 21.27, 31.54, 42.06, 51.6, 59.79, 72.94, 83.06, 94.96, 105.03, 117.58, 128.79, 138.52, 143.84, 148]
-        x = [558.0, 624.0, 644.0, 685.0, 724.0, 757.0, 786.0, 826.0, 857.0, 891.0, 918.0, 950.0, 977.0, 998.0, 1010.0, 1020.0]
-        return np.interp(pot_reading, x, y)
-    elif actuator == 'bucket':
-        y = [0, 17.27, 25.87, 36.6, 50.65, 64.64, 77.93, 91.73, 102.96, 109.24]
-        x = [176.0, 263.0, 308.0, 358.0, 417.0, 473.0, 525.0, 576.0, 613.0, 633.0]
-        return np.interp(pot_reading, x, y)
+class Measurement():
+    '''Contains current measurement and pin info with update methods'''
+    def __init__(self, GPIO_pin, measure_type):
+        ADC.setup()
+        self.GPIO_pin = GPIO_pin
+        self.measure_type = measure_type
+        self.lookup = {'boom': [[536.0, 564.0, 590.0, 627.0, 667.0, 707.0, 753.0, 806.0, 845.0, 872.0, 895.0, 916.0, 923.0],    # BM Analog Input
+                                [0, 7.89, 14.32, 22.64, 33.27, 44.05, 56.85, 73.62, 87.54, 98.1, 107.14, 115.34, 118.27]],      # BM Displacement mm
+                       'stick': [[558.0, 624.0, 644.0, 685.0, 724.0, 757.0, 786.0, 826.0, 857.0, 891.0, 918.0, 950.0, 977.0, 998.0, 1010.0, 1020.0],    # SK Analog Input
+                                [0, 16.28, 21.27, 31.54, 42.06, 51.6, 59.79, 72.94, 83.06, 94.96, 105.03, 117.58, 128.79, 138.52, 143.84, 148]],        # SK Displacement mm
+                       'bucket': [[176.0, 263.0, 308.0, 358.0, 417.0, 473.0, 525.0, 576.0, 613.0, 633.0],
+                                [0, 17.27, 25.87, 36.6, 50.65, 64.64, 77.93, 91.73, 102.96, 109.24]]}
+
+    def update_measurement(self):
+        self.value = np.interp(ADC.read_raw(self.GPIO_pin), self.lookup[self.measure_type][0], self.lookup[self.measure_type][1])
+
+
+# def interpolate(pot_reading, actuator):
+#     '''Use lookup tables to interpolate actuator position in mm from string pot voltage'''
+#     if actuator == 'boom':
+#         y = [0, 7.89, 14.32, 22.64, 33.27, 44.05, 56.85, 73.62, 87.54, 98.1, 107.14, 115.34, 118.27]
+#         x = [536.0, 564.0, 590.0, 627.0, 667.0, 707.0, 753.0, 806.0, 845.0, 872.0, 895.0, 916.0, 923.0]
+#         return np.interp(pot_reading, x, y)
+#     elif actuator == 'stick':
+#         y = [0, 16.28, 21.27, 31.54, 42.06, 51.6, 59.79, 72.94, 83.06, 94.96, 105.03, 117.58, 128.79, 138.52, 143.84, 148]
+#         x = [558.0, 624.0, 644.0, 685.0, 724.0, 757.0, 786.0, 826.0, 857.0, 891.0, 918.0, 950.0, 977.0, 998.0, 1010.0, 1020.0]
+#         return np.interp(pot_reading, x, y)
+#     elif actuator == 'bucket':
+#         y = [0, 17.27, 25.87, 36.6, 50.65, 64.64, 77.93, 91.73, 102.96, 109.24]
+#         x = [176.0, 263.0, 308.0, 358.0, 417.0, 473.0, 525.0, 576.0, 613.0, 633.0]
+#         return np.interp(pot_reading, x, y)
 
 
 def parser(received, received_parsed):
@@ -99,6 +117,9 @@ bucket = Servo("P8_34", 5.198, 10.03)
 swing = Servo("P9_28", 4.939, 10)
 actuators = (boom, arm, bucket, swing)
 
+# Initialize measurement classes
+boom_ms = Measurement('P9_37', 'boom')
+stick_ms = 
 
 if __name__ == "__main__":
 
@@ -124,7 +145,6 @@ if __name__ == "__main__":
         f.write('Time,Boom JS,Stick JS,Bucket JS,Swing JS,Boom Cmd,Stick Cmd,Bucket Cmd,Swing Cmd,Boom Ms,Stick Ms,Bucket Ms,Swing Ms\n')
 
     start = time.time()
-    received_parsed = [0, 0, 0, 0]
 
     try:
         # Connect to server and send data
@@ -136,7 +156,7 @@ if __name__ == "__main__":
 
             # Parse data (and apply joystick deadzone)
             try:
-                received_parsed = parser(received_joysticks, received_parsed)
+                received_parsed = parser(received_joysticks)
             except ValueError:
                 pass
 
