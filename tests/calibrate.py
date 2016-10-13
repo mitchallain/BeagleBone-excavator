@@ -1,17 +1,18 @@
 #! /usr/bin/env python
 
 ##########################################################################################
-# calibrate_bucket.py
+# calibrate.py
 #
-# Calibrates bucket potentiometer on pin 35
+# Calibrates potentiometer on pin 33 (SK), 35 (BK), and 37 (BM)
 #
-# NOTE: Extra notes
+# NOTE: Paste output into excavator.py update_measurement function
 #
 # Created: September 12, 2016
 #   - Mitchell Allain
 #   - allain.mitch@gmail.com
 #
 # Modified:
+#   * October 12, 2016 - changed name and recalibrated
 #   *
 #
 ##########################################################################################
@@ -32,7 +33,7 @@ if __name__ == "__main__":
         if user == 'exit':
             break
         else:
-            potMeasure.append(ADC.read_raw('P9_35'))
+            potMeasure.append(ADC.read_raw('P9_33'))
             calMeasure.append(user)
 
     print calMeasure

@@ -23,5 +23,6 @@ measurements = measurement_setup()
 
 while True:
     for m in measurements:
+        m.update_measurement()
         print(m.measure_type + ': ' + str(m.value))
     raw_input('Press Enter to advance...')
