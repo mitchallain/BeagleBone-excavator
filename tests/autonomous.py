@@ -37,7 +37,7 @@ from PID import PID
 
 # Create some trajectories, trajectory_# = [time, [poly coeff's starting with lowest power for BM], [SK poly], [BK poly], [SW poly]]
 trajectory_1 = [[0, [8.185, 0, 0, 0, 0]], [2.997, [4.63, 0, 0, 1.1889, -0.5951, 0.0794]], [2.997, [3.5065, 0, 0, 2.3539, -1.1781, 0.1572]], [0, [0, 0, 0, 0]]]
-# trajectory_2 = 
+# trajectory_2 =
 task = [trajectory_1]
 
 # Initialize PWM/servo classes and measurement classes, note: this zeros the encoder
@@ -117,7 +117,7 @@ try:
         # Endpoint error norm triggers trajectory change
         endpoint = [0, 0, 0, 0]
         endpoint_error = [0, 0, 0, 0]
-        
+
         # Initialize integrator and derivator to zero
         for c in controllers:
             c.setIntegrator(0)
@@ -157,7 +157,6 @@ try:
                     actuators[i].duty_set = controllers[i].update(measurements[i].value) + actuators[i].duty_mid
                     print(controllers[i].P_value + controllers[i].I_value + controllers[i].D_value)
                     endpoint_error[i] = measurements[i].value - endpoint[i]
-            
 
             # Update PWM, saturation implemented in Servo class
             for a in actuators:

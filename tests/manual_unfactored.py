@@ -1,12 +1,12 @@
 #! /usr/bin/env python
 
 ##########################################################################################
-# manual.py
+# manual_unfactored.py
 #
-# Derived from manual_unfactored.py
-# Manual operation of the excavator. Records data and time stamps.
+# Derived from BBB_tm_Full.py
+# Manual operation of the excavator. Begins recording data and timestamps
 #
-# NOTE: 
+# NOTE: OBSOLETE, now using manual.py
 #
 # Created: September 14, 2016
 #   - Mitchell Allain
@@ -14,18 +14,85 @@
 #
 # Modified:
 #   * October 06, 2016, deadzone joysticks in parser function
-#   * October 11, 2016, factored out code into measurement class, modified servo class,
+#   * Changed over to PyBBIO to avoid PWM freqeuncy bug in Adafruit library
 #
 ##########################################################################################
 
 import Adafruit_BBIO.PWM as PWM
 import Adafruit_BBIO.ADC as ADC
+# import bbio
 import numpy as np
 import socket
 import time
 import datetime
 import os
 
+
+class Servo():
+    '''Servo class stores pin info and duty limits'''
+    def __init__(self, servo_pin, duty_min, duty_max, actuator_name=''):
+        self.duty_min = duty_min
+        self.duty_max = duty_max
+        self.duty_span = self.duty_max - self.duty_min
+        self.duty_mid = ((90.0 / 180) * self.duty_span + self.duty_min)
+        self.duty_set = self.duty_mid
+        self.actuator_name = actuator_name
+
+        self.servo_pin = servo_pin
+        print 'starting servo PWM'
+        PWM.start(self.servo_pin, self.duty_mid, 50.625)
+        # bbio.analogWrite(self.servo_pin, self.duty_mid) # stupid PyBBIO naming convention uses analogWrite
+        # bbio.pwmFrequency(self.servo_pin, 50.625)
+
+    def update_servo(self):
+        '''Saturate duty cycle at limits'''
+        self.duty_set = max(self.duty_min, min(self.duty_max, self.duty_set))
+        PWM.set_duty_cycle(self.duty_set)
+        # bbio.analogWrite(self.servo_pin, self.duty_cycle)
+
+    def close_servo(self):
+        PWM.stop(self.servo_pin)
+        PWM.cleanup()
+        # bbio.pwmDisable(self.servo_pin)
+
+
+def interpolate(pot_reading, actuator):
+    '''Use lookup tables to interpolate actuator position in mm from string pot voltage'''
+    if actuator == 'boom':
+        y = [0, 7.89, 14.32, 22.64, 33.27, 44.05, 56.85, 73.62, 87.54, 98.1, 107.14, 115.34, 118.27]
+        x = [536.0, 564.0, 590.0, 627.0, 667.0, 707.0, 753.0, 806.0, 845.0, 872.0, 895.0, 916.0, 923.0]
+        return np.interp(pot_reading, x, y)
+    elif actuator == 'stick':
+        y = [0, 16.28, 21.27, 31.54, 42.06, 51.6, 59.79, 72.94, 83.06, 94.96, 105.03, 117.58, 128.79, 138.52, 143.84, 148]
+        x = [558.0, 624.0, 644.0, 685.0, 724.0, 757.0, 786.0, 826.0, 857.0, 891.0, 918.0, 950.0, 977.0, 998.0, 1010.0, 1020.0]
+        return np.interp(pot_reading, x, y)
+    elif actuator == 'bucket':
+        y = [0, 17.27, 25.87, 36.6, 50.65, 64.64, 77.93, 91.73, 102.96, 109.24]
+        x = [176.0, 263.0, 308.0, 358.0, 417.0, 473.0, 525.0, 576.0, 613.0, 633.0]
+        return np.interp(pot_reading, x, y)
+
+
+def parser(received, received_parsed):
+    '''Parse joystick data from server_02.py, and convert to float'''
+    deadzone = 0.1
+    try:
+        received = received.translate(None, "[( )]").split(',')
+        for axis in range(len(received)):
+            if (float(received[axis]) > deadzone) or (float(received[axis]) < -deadzone):
+                received_parsed[axis] = float(received[axis])
+            else:
+                received_parsed[axis] = 0
+        return received_parsed
+    except ValueError:
+        print '\nValue Error'
+        raise ValueError
+
+
+def name_date_time(file_name):
+    '''Returns string of format __file__ + '_mmdd_hhmm.csv' '''
+    n = datetime.datetime.now()
+    data_stamp = os.path.basename(file_name)[:-3] + '_' + n.strftime('%m%d_%H%M')+'.csv'
+    return data_stamp
 
 
 # Networking details
@@ -35,12 +102,13 @@ HOST, PORT = '192.168.7.1', 9999
 boom = Servo("P9_22", 4.939, 10.01)
 arm = Servo("P8_13", 4.929, 8.861)
 bucket = Servo("P8_34", 5.198, 10.03)
-swing = Servo("P9_28", 4.939, 10)
+swing = Servo("P9_42", 4.939, 10)
+# boom = Servo("PWM2A", 4.939, 10.01)     # P8_19
+# arm = Servo("PWM2B", 4.929, 8.861)      # P8_13
+# bucket = Servo("PWM1B", 5.198, 10.03)   # P8_34
+# swing = Servo("PWM1A", 4.939, 10)       # P8_36
 actuators = (boom, arm, bucket, swing)
 
-# Initialize measurement classes
-boom_ms = Measurement('P9_37', 'boom')
-stick_ms = 
 
 if __name__ == "__main__":
 
@@ -66,6 +134,7 @@ if __name__ == "__main__":
         f.write('Time,Boom JS,Stick JS,Bucket JS,Swing JS,Boom Cmd,Stick Cmd,Bucket Cmd,Swing Cmd,Boom Ms,Stick Ms,Bucket Ms,Swing Ms\n')
 
     start = time.time()
+    received_parsed = [0, 0, 0, 0]
 
     try:
         # Connect to server and send data
@@ -77,7 +146,7 @@ if __name__ == "__main__":
 
             # Parse data (and apply joystick deadzone)
             try:
-                received_parsed = parser(received_joysticks)
+                received_parsed = parser(received_joysticks, received_parsed)
             except ValueError:
                 pass
 
@@ -85,11 +154,9 @@ if __name__ == "__main__":
             boom_duty_cycle_input = boom.duty_span*(received_parsed[2] + 1)/(2) + boom.duty_min
             arm_duty_cycle_input = arm.duty_span*(received_parsed[3] + 1)/(2) + arm.duty_min
             bucket_duty_cycle_input = bucket.duty_span*(-received_parsed[0] + 1)/(2) + bucket.duty_min
-            swing_duty_cycle_input = swing.duty_span*(received_parsed[1] + 1)/(2) + swing.duty_min
+            swing_duty_cycle_input = swing.duty_span*(-received_parsed[1] + 1)/(2) + swing.duty_min
 
             # Data Logging
-            excavator.data_log([x.getValue() for x in measurement])
-            
             try:
                 f.write(str(time.time()-start) + ',' +          # Time
                         str(received_parsed[2]) + ',' +         # Boom JS
@@ -109,11 +176,16 @@ if __name__ == "__main__":
 
             # Update PWM
             print boom_duty_cycle_input, arm_duty_cycle_input, bucket_duty_cycle_input, swing_duty_cycle_input
-            # print boom_duty_cycle_input, swing_duty_cycle_input
+
             PWM.set_duty_cycle(boom.servo_pin, boom_duty_cycle_input)
             PWM.set_duty_cycle(arm.servo_pin, arm_duty_cycle_input)
             PWM.set_duty_cycle(bucket.servo_pin, bucket_duty_cycle_input)
             PWM.set_duty_cycle(swing.servo_pin, swing_duty_cycle_input)
+
+            # bbio.analogWrite(boom.servo_pin, boom_duty_cycle_input)
+            # bbio.analogWrite(arm.servo_pin, arm_duty_cycle_input)
+            # bbio.analogWrite(bucket.servo_pin, bucket_duty_cycle_input)
+            # bbio.analogWrite(swing.servo_pin, swing_duty_cycle_input)
 
     except KeyboardInterrupt:
         print '\nQuitting'

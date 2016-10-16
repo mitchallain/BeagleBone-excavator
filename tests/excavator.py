@@ -13,7 +13,7 @@
 #
 # Modified:
 #   * October 15, 2016 - Encoder and DataLogger classes added
-#   *
+#   * October 16, 2016 - js_index and toggle_invert added to Servo class to sort out inputs, probably a better way
 #   *
 #   *
 #
@@ -29,13 +29,14 @@ import os
 
 class Servo():
     '''Servo class stores pin info and duty limits'''
-    def __init__(self, servo_pin, duty_min, duty_max, actuator_name):
+    def __init__(self, servo_pin, duty_min, duty_max, actuator_name='', js_index=0):
         self.duty_min = duty_min
         self.duty_max = duty_max
         self.duty_span = self.duty_max - self.duty_min
         self.duty_mid = ((90.0 / 180) * self.duty_span + self.duty_min)
         self.duty_set = self.duty_mid
         self.actuator_name = actuator_name
+        self.js_index = js_index
 
         self.servo_pin = servo_pin
         print 'starting servo PWM'
@@ -116,11 +117,12 @@ class DataLogger():
 def parser(received, received_parsed):
     '''Parse joystick data from server_02.py, and convert to float'''
     deadzone = 0.1
+    toggle_invert = [-1, 1, 1, 1]  # Invert bucket joystick
     try:
         received = received.translate(None, "[( )]").split(',')
         for axis in range(len(received)):
             if (float(received[axis]) > deadzone) or (float(received[axis]) < -deadzone):
-                received_parsed[axis] = float(received[axis])
+                received_parsed[axis] = float(received[axis])*toggle_invert[axis]
             else:
                 received_parsed[axis] = 0
         return received_parsed
@@ -138,10 +140,10 @@ def name_date_time(file_name):
 
 def exc_setup():
     '''Start all PWM classes and measurement classes'''
-    boom = Servo("P9_22", 4.939, 10.01, 'Boom')
-    stick = Servo("P8_13", 4.929, 8.861, 'Stick')
-    bucket = Servo("P8_34", 5.198, 10.03, 'Bucket')
-    swing = Servo("P9_42", 4.939, 10, 'Swing')
+    boom = Servo("P9_22", 4.939, 10.01, 'Boom', 2)
+    stick = Servo("P8_13", 4.929, 8.861, 'Stick', 3)
+    bucket = Servo("P8_34", 5.198, 10.03, 'Bucket', 0)
+    swing = Servo("P9_42", 4.939, 10, 'Swing', 1)
     actuators = [boom, stick, bucket, swing]
 
     # Initialize Measurement classes for string pots
