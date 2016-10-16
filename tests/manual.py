@@ -15,11 +15,13 @@
 #
 # Modified:
 #   * October 06, 2016, deadzone joysticks in parser function
+#   * Changed over to PyBBIO to avoid PWM freqeuncy bug in Adafruit library
 #
 ##########################################################################################
 
 import Adafruit_BBIO.PWM as PWM
 import Adafruit_BBIO.ADC as ADC
+# import bbio
 import numpy as np
 import socket
 import time
@@ -29,25 +31,30 @@ import os
 
 class Servo():
     '''Servo class stores pin info and duty limits'''
-    def __init__(self, servo_pin, duty_min, duty_max):
+    def __init__(self, servo_pin, duty_min, duty_max, actuator_name=''):
         self.duty_min = duty_min
         self.duty_max = duty_max
         self.duty_span = self.duty_max - self.duty_min
         self.duty_mid = ((90.0 / 180) * self.duty_span + self.duty_min)
         self.duty_set = self.duty_mid
+        self.actuator_name = actuator_name
 
         self.servo_pin = servo_pin
         print 'starting servo PWM'
         PWM.start(self.servo_pin, self.duty_mid, 50.625)
+        # bbio.analogWrite(self.servo_pin, self.duty_mid) # stupid PyBBIO naming convention uses analogWrite
+        # bbio.pwmFrequency(self.servo_pin, 50.625)
 
     def update_servo(self):
         '''Saturate duty cycle at limits'''
-        duty_cycle_clamp = max(self.duty_min, min(self.duty_max, self.duty_set))
-        PWM.set_duty_cycle(duty_cycle_clamp)
+        self.duty_set = max(self.duty_min, min(self.duty_max, self.duty_set))
+        PWM.set_duty_cycle(self.duty_set)
+        # bbio.analogWrite(self.servo_pin, self.duty_cycle)
 
     def close_servo(self):
         PWM.stop(self.servo_pin)
         PWM.cleanup()
+        # bbio.pwmDisable(self.servo_pin)
 
 
 def interpolate(pot_reading, actuator):
@@ -96,7 +103,11 @@ HOST, PORT = '192.168.7.1', 9999
 boom = Servo("P9_22", 4.939, 10.01)
 arm = Servo("P8_13", 4.929, 8.861)
 bucket = Servo("P8_34", 5.198, 10.03)
-swing = Servo("P9_28", 4.939, 10)
+swing = Servo("P9_42", 4.939, 10)
+# boom = Servo("PWM2A", 4.939, 10.01)     # P8_19
+# arm = Servo("PWM2B", 4.929, 8.861)      # P8_13
+# bucket = Servo("PWM1B", 5.198, 10.03)   # P8_34
+# swing = Servo("PWM1A", 4.939, 10)       # P8_36
 actuators = (boom, arm, bucket, swing)
 
 
@@ -144,7 +155,7 @@ if __name__ == "__main__":
             boom_duty_cycle_input = boom.duty_span*(received_parsed[2] + 1)/(2) + boom.duty_min
             arm_duty_cycle_input = arm.duty_span*(received_parsed[3] + 1)/(2) + arm.duty_min
             bucket_duty_cycle_input = bucket.duty_span*(-received_parsed[0] + 1)/(2) + bucket.duty_min
-            swing_duty_cycle_input = swing.duty_span*(received_parsed[1] + 1)/(2) + swing.duty_min
+            swing_duty_cycle_input = swing.duty_span*(-received_parsed[1] + 1)/(2) + swing.duty_min
 
             # Data Logging
             try:
@@ -166,11 +177,16 @@ if __name__ == "__main__":
 
             # Update PWM
             print boom_duty_cycle_input, arm_duty_cycle_input, bucket_duty_cycle_input, swing_duty_cycle_input
-            # print boom_duty_cycle_input, swing_duty_cycle_input
+
             PWM.set_duty_cycle(boom.servo_pin, boom_duty_cycle_input)
             PWM.set_duty_cycle(arm.servo_pin, arm_duty_cycle_input)
             PWM.set_duty_cycle(bucket.servo_pin, bucket_duty_cycle_input)
             PWM.set_duty_cycle(swing.servo_pin, swing_duty_cycle_input)
+
+            # bbio.analogWrite(boom.servo_pin, boom_duty_cycle_input)
+            # bbio.analogWrite(arm.servo_pin, arm_duty_cycle_input)
+            # bbio.analogWrite(bucket.servo_pin, bucket_duty_cycle_input)
+            # bbio.analogWrite(swing.servo_pin, swing_duty_cycle_input)
 
     except KeyboardInterrupt:
         print '\nQuitting'
