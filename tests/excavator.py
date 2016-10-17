@@ -110,14 +110,14 @@ class DataLogger():
         elif self.mode == 3:   # Blended mode
             self.file.write('Time,Boom Cmd,Stick Cmd,Bucket Cmd,Swing Cmd,Boom Ms,Stick Ms,Bucket Ms,Swing Ms,Boom Ctrl,Stick Ctrl,Bucket Ctrl,Swing Ctrl,Boom Blended,Stick Blended,Bucket Blended,Swing Blended,Primitive,\n')
 
-    def log(self, run_time, data_listed):
-        self.file.write(','.join(map(str, [run_time]+data_listed))+'\n')
+    def log(self, data_listed):
+        self.file.write(','.join(map(str, data_listed))+'\n')
 
 
 def parser(received, received_parsed):
     '''Parse joystick data from server_02.py, and convert to float'''
     deadzone = 0.1
-    toggle_invert = [-1, 1, 1, 1]  # Invert bucket joystick
+    toggle_invert = [-1, -1, 1, 1]  # Invert bucket joystick
     try:
         received = received.translate(None, "[( )]").split(',')
         for axis in range(len(received)):
