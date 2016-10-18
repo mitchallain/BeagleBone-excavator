@@ -28,7 +28,23 @@ import os
 
 
 class Servo():
-    '''Servo class stores pin info and duty limits'''
+    '''A generic PWM class
+
+    Args:
+        servo_pin (str): String representing BeagleBone pin, ex: 'P9_32'
+        duty_min (float): Minimum duty cycle
+        duty_max (float): Maximum duty cycle
+        actuator_name (str, optional): Used identify actuators
+        js_index (int, optional): Index of joystick list corresponding to this actuator
+
+    Attributes:
+        duty_min (float): Minimum duty cycle
+        duty_max (float): Maximum duty cycle
+        duty_span (float): Difference between duty_max and duty_min
+        duty_mid (float): Average of duty_max and duty_min
+        actuator_name (str, optional): Used identify actuators
+        js_index (int, optional): Index of joystick list corresponding to this actuator
+        '''
     def __init__(self, servo_pin, duty_min, duty_max, actuator_name='', js_index=0):
         self.duty_min = duty_min
         self.duty_max = duty_max
@@ -53,7 +69,18 @@ class Servo():
 
 
 class Measurement():
-    '''Current measurement in cm and pin info with update methods'''
+    '''Current measurement in cm and pin info with update methods
+
+    Args:
+        GPIO_pin (str): String representation of BeagleBone Black pin, ex. "P9_32"
+        measure_type (str): String name of measurement type, must match lookup tables below
+
+    Attributes:
+        GPIO_pin (str): see above
+        measure_type (str): see above
+        lookup (dict): dictionary with lookup tables for each string potentiometer, must be calibrated regularly
+        value (float): displacement of actuator in cm
+    '''
     def __init__(self, GPIO_pin, measure_type):
         ADC.setup()
         self.GPIO_pin = GPIO_pin
@@ -66,7 +93,7 @@ class Measurement():
                                 [0, 8, 16.5, 23.9, 36.4, 42.4, 53.5, 63.7, 71.6, 81.8, 92.7, 102.5, 107.3, 109]]}
 
     def update_measurement(self):
-        '''In cm'''
+        '''Uses lookup tables and current analog in value to find actuator displacement'''
         self.value = np.interp(ADC.read_raw(self.GPIO_pin), self.lookup[self.measure_type][0], self.lookup[self.measure_type][1])/10
 
 
@@ -80,7 +107,13 @@ class Measurement():
 #         self.value = 0
 
 class Encoder():
-    '''Encoder class to mimic Measurement class and allow listed value calls'''
+    '''Encoder class to mimic Measurement class and allow listed value calls
+
+    Attributes:
+        encoder (obj): instance of RotaryEncoder class for EQEP1
+        measure_type (str): String representing the type of measurement
+        value (float): position of encoder in radians
+    '''
     def __init__(self):
         self.encoder = RotaryEncoder(RotaryEncoder.EQEP1)
         self.encoder.enable()
@@ -90,11 +123,21 @@ class Encoder():
         self.measure_type = 'swing'
 
     def update_measurement(self):
+        '''Function which updates measurement value for encoder'''
         self.value = int(self.encoder.getPosition().split('\n')[0])*np.pi/3200  # Angle in radians, 3200 counts per pi radians, 360 counts per shaft rev, 5 times reduction on shaft, 4 times counts for quadrature
 
 
 class DataLogger():
-    '''Data logging to csv'''
+    '''Data logging to csv
+
+    Args:
+        mode (int): 1 for manual, 2 for autonomous, 3 for Blended
+        filename (str): string to write values to, ending in ".csv"
+
+    Attributes:
+        mode (int): see above
+        file (obj): file object for writing data
+    '''
     def __init__(self, mode, filename):
         self.mode = mode
         try:
@@ -107,11 +150,43 @@ class DataLogger():
         elif self.mode == 2:   # Autonomous mode
             self.file.write('Time,Boom Ms,Stick Ms,Bucket Ms,Swing Ms,Boom Cmd,Stick Cmd,Bucket Cmd,Swing Cmd,Boom Error,Stick Error,Bucket Error,Swing Error\n')
 
-        elif self.mode == 3:   # Blended mode
-            self.file.write('Time,Boom Cmd,Stick Cmd,Bucket Cmd,Swing Cmd,Boom Ms,Stick Ms,Bucket Ms,Swing Ms,Boom Ctrl,Stick Ctrl,Bucket Ctrl,Swing Ctrl,Boom Blended,Stick Blended,Bucket Blended,Swing Blended,Primitive,\n')
+        elif self.mode == 3:   # Blended mode (Commands, Controllers, Blended, Measurements, Class, Probability)
+            self.file.write('Time,Boom Cmd,Stick Cmd,Bucket Cmd,Swing Cmd,Boom Ctrl,Stick Ctrl,Bucket Ctrl,Swing Ctrl,Boom Blended,Stick Blended,Bucket Blended,Swing Blended,Boom Ms,Stick Ms,Bucket Ms,Swing Ms,Class,Confidence,\n')
 
     def log(self, data_listed):
         self.file.write(','.join(map(str, data_listed))+'\n')
+
+
+class Prediction():
+    '''Prediction class does all the magic.
+
+    Args:
+        mode (int): 0 is off, 1 is static alpha, 2 is dynamic alpha
+        model (string): string referencing the active task model
+        alpha (float): BSC blending parameter preset for static mode
+
+    Attributes:
+        mode (int): see above
+        model (obj):
+        endpoints (list, floats): endpoints for the current task
+        confidence (float): probability that current task is nominal
+        blend_threshold (float): mininum confidence to initiate blending
+        alpha (float): BSC blending parameter alpha
+        primitive: current blending primitive
+        history: primitives and endpoints from recent history (window TBD)
+    '''
+    def __init__(self, mode, model='', alpha=0):
+        self.mode = mode
+        if self.mode == 0:  # Blending off
+            self.alpha = 0
+        elif self.mode == 1:  # Static alpha
+            self.alpha = alpha
+        # elif self.mode == 2:
+            #  We will see what goes here
+
+    def update_prediction(self, js_inputs, measurements):
+        '''Update our predictions for motion class and endpoints'''
+        # This is where all the magic happens
 
 
 def parser(received, received_parsed):
@@ -129,6 +204,16 @@ def parser(received, received_parsed):
     except ValueError:
         print '\nValue Error'
         raise ValueError
+
+
+def blending_law(operator_input, controller_output, alpha):
+    '''Blend inputs according to the following law:
+
+        u_b = u + a*(u' - u)
+
+        where u is the operator input, a is the alpha parameter, and u' is the controller output
+    '''
+    return operator_input + alpha*(controller_output - operator_input)
 
 
 def name_date_time(file_name):

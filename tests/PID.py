@@ -16,6 +16,27 @@
 class PID:
     """
     Discrete PID control
+
+    Args:
+        P (float): proportional gain
+        I (float): integral gain
+        D (float): derivative gain
+        Derivator (float): starting value of Derivator
+        Intregrator (float): starting value of Integrator
+        Integrator_max (float): maximum integrator value
+        Integrator_min (float): minimum integrator value
+
+    Attributes:
+        Kp (float):proportional gain
+        Ki (float): integral gain
+        Kd (float): derivative gain
+        Derivator (float): starting value of Derivator
+        Intregrator (float): starting value of Integrator
+        Integrator_max (float): maximum integrator value
+        Integrator_min (float): minimum integrator value
+        set_point (float): set point for controller
+        error (float): error, set_point - current_value
+        PID (float): output of controller
     """
 
     def __init__(self, P=1.0, I=0.0, D=0.0, Derivator=0, Integrator=0, Integrator_max=500, Integrator_min=-500):
@@ -32,8 +53,13 @@ class PID:
         self.error = 0.0
 
     def update(self, current_value):
-        """
-        Calculate PID output value for given reference input and feedback
+        """Calculate PID output value for given reference input and feedback.
+
+        Args:
+            current_value (float): current output of plant
+
+        Returns:
+            PID (float): controller output
         """
 
         self.error = self.set_point - current_value
@@ -51,13 +77,13 @@ class PID:
 
         self.I_value = self.Integrator * self.Ki
 
-        PID = self.P_value + self.I_value + self.D_value
+        self.PID = self.P_value + self.I_value + self.D_value
 
-        return PID
+        return self.PID
 
     def setPoint(self, set_point):
         """
-        Initilize the setpoint of PID
+        Initialize the setpoint of PID
         """
         self.set_point = set_point
         # self.Integrator = 0
