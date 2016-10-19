@@ -189,6 +189,107 @@ class Prediction():
         # This is where all the magic happens
 
 
+class TriggerPrediction():
+    '''The trigger prediction class uses task specific event triggers to determine the current subgoal
+
+    Args:
+        mode (int): 0 is off, 1 is static alpha, 2 is dynamic alpha
+        model (string): string referencing the active task model
+        alpha (float): BSC blending parameter preset for static mode
+
+    Attributes:
+        mode (int): see above
+        model (obj):
+        endpoints (list, floats): endpoints for the current task
+        confidence (float): probability that current task is nominal
+        blend_threshold (float): mininum confidence to initiate blending
+        alpha (float): BSC blending parameter alpha
+        subgoal: current triggered subgoal
+        active: assistance active
+        history: primitives and endpoints from recent history (window TBD)
+    '''
+    def __init__(self, mode, model, alpha=0):
+        self.mode = mode
+        if self.mode == 0:  # Blending off
+            self.alpha = 0
+        elif self.mode == 1:  # Static alpha
+            self.alpha = alpha
+        # elif self.mode == 2:
+            #  We will see what goes here
+        self.subgoal == 0
+        self.subgoal_model = subgoal_model
+
+    def update_state(self, js_inputs, ms_values):
+        '''Poll event triggers and update subgoal.
+
+        Args:
+            js_inputs (list: float): a list of js_inputs in the form [BM, SK, BK, SW]
+            ms_values (list: float): listed measurement values for each actuator
+
+        Returns:
+            subgoal (int)
+            active (bool)
+        '''
+        # Start by checking if we are in nominal task
+        if self.subgoal == 0:
+            # Look for a terminating cue
+            for sg in self.subgoal_model:
+                if [(ms_values[i] - sg['subgoal_pos'][i]) < sg['npt'][i] for i in range(3)] == [True]*4:
+                    self.subgoal = sg['subgoal'] + 1
+                    self.active = False
+                    return self.subgoal
+        else:
+            # Look for intiating cue
+            # THERES DEFINITELY A BETTER WAY TO WRITE THIS IF STATEMENT
+            if (((js_inputs[sg_model[self.subgoal]['it'][0]] < sg_model[self.subgoal]['it'][1])
+                and ((sg_model[self.subgoal]['it'][1]) < 0))
+                or ((js_inputs[sg_model[self.subgoal]['it'][0]] > sg_model[self.subgoal]['it'][1])
+                    and ((sg_model[self.subgoal]['it'][1]) > 0)):
+                self.active = True
+
+
+
+# Trying out some subgoal dicts, since they do not need to have information storage and are essentially just task models
+sg_pile = {'subgoal': 1,
+           'it': [3, -0.5]                                  # Joystick index 3 (swing) move left
+           'subgoal_pos': [6.7528, 0.9117, 9.9466, 1.4058]  # Over the pile
+           'npt': [3, 3, 3, 0.2]}                           # Terminate when swing close to the pile
+           'onpt': []}
+
+sg_dump = {'subgoal': 6,
+           'subgoal_pos': [6.7528, 0.9117, 9.9466, 0.32],   # Subgoal position: uncurled over truck
+           'it': [0, 0, 0, 0]                               # Input Trigger: bucket uncurl cmd
+           'npt': [3, 3, 3, 0.2]}                           # NPT: bucket uncurled
+           'onpt': []}                                      # ONPT: 
+sg_model = [sg_pile, sg_dump]
+
+
+# class Subgoal():
+#     '''Subgoal class contains information about triggers of subgoals.
+
+#     Proximity triggers terminate the subgoal, input triggers initiate the subgoal.
+
+#     Args:
+#         subgoal (list: float): the subgoals position in the exc base frame (x, y, z, theta)
+#         it (list: floats): input triggers, joystick states that initiate a subgoal
+#         npt (list: floats): nominal proximity triggers, mark a nominal task termination
+#         onpt (list: floats): off-nominal proximity triggers, mark an off nominal transition
+        
+
+#     Attributes:
+#         subgoal (int): the integer key corresponding to the subgoal
+#         subgoal_pos (list: floats): see above
+#         it (list: floats)
+#         npt (list: floats)
+#         onpt (list: floats)
+#         active (bool): whether or not the subgoal is currently triggered (active from initiate to terminate)
+#     '''
+#     def __init__(self, subgoal, subgoal_pos, it, npt, onpt):
+#         self.subgoal = subgoal
+#         self.nominal_proximity_triggers = nominal_proximity_triggers
+#         self.input_triggers = input_triggers
+
+
 def parser(received, received_parsed):
     '''Parse joystick data from server_02.py, and convert to float'''
     deadzone = 0.1
