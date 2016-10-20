@@ -18,11 +18,14 @@
 
 from excavator import *
 
-
+points = []
 measurements = measurement_setup()
 
 while True:
     for m in measurements:
         m.update_measurement()
         print(m.measure_type + ': ' + str(m.value))
+
+    points.append([m.value for m in measurements])
+    print points
     raw_input('Press Enter to advance...')

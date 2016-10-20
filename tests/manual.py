@@ -16,6 +16,7 @@
 #   * October 06, 2016, deadzone joysticks in parser function
 #   * October 11, 2016, factored out code into measurement class, modified servo class,
 #   * October 16, 2016, finished factoring, renamed to manual.py
+#   * October 19, 2016, switched to UDP!
 #
 ##########################################################################################
 
@@ -34,8 +35,8 @@ if __name__ == "__main__":
     actuators = temp[0]
     measurements = temp[1]
 
-    # Create a socket (SOCK_STREAM means a TCP socket)
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    # Create a socket (SOCK_DGRAM means a UDP socket)
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
     # Initialize DataLogger class with mode 1 for manual
     filename = raw_input('Name the output file (end with .csv) or press return to disable data logging: ')
@@ -50,7 +51,7 @@ if __name__ == "__main__":
 
     try:
         # Connect to server and send data
-        sock.connect((HOST, PORT))
+        sock.bind((HOST, PORT))
 
         while True:
             loop_start = time.time()

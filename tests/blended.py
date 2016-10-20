@@ -19,21 +19,22 @@
 from excavator import *
 import socket
 import time
+from sg_model import sg_model
 
 
 # Networking details
-HOST, PORT = '192.168.7.1', 9999
+HOST, PORT = '', 9999
 
 # Initialize PWM/servo classes and measurement classes, note: this zeros the encoder
 temp = exc_setup()
 actuators = temp[0]
 measurements = temp[1]
 
-# Initialize predictor
-predictor = Prediction(0)
+# Initialize predictor, mode 0, alpha = 0.5
+predictor = TriggerPrediction(0, sg_model, 0.5)
 
-# Create a socket (SOCK_STREAM means a TCP socket)
-sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+# Create a socket (SOCK_DGRAM means a UDP socket)
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
 # Initialize DataLogger class with mode 1 for manual
 filename = raw_input('Name the output file (end with .csv) or press return to disable data logging: ')
@@ -48,7 +49,7 @@ received_parsed = [0, 0, 0, 0]
 
 try:
     # Connect to server and send data
-    sock.connect((HOST, PORT))
+    sock.bind((HOST, PORT))
 
     while True:
         loop_start = time.time()
@@ -67,13 +68,16 @@ try:
             pass
 
         # Prediction step
-        predictor.update_prediction([received_parsed[a.js_index] for a in actuators], [m.value for m in measurements])
+        print predictor.update_state([received_parsed[a.js_index] for a in actuators], [m.value for m in measurements]), ["%.2f" % m.value for m in measurements]
 
-        # Calculate controller assistance for nominal tasks, must be in motion and above estimation confidence threshold
-        if (predictor.primitive != 0) and (predictor.confidence > predictor.blend_threshold):
-            for i in xrange(3):
-                controllers[i].setPoint(predictor.endpoints[i])
-                actuators[i].duty_set = blending_law(controllers[i], received_parsed[a.js_index], predictor.alpha)
+        for a in actuators:
+            a.duty_set = a.duty_span*(received_parsed[a.js_index]+1)/(2) + a.duty_min
+
+        # # Calculate controller assistance for nominal tasks, must be in motion and above estimation confidence threshold
+        # if (predictor.primitive != 0) and (predictor.confidence > predictor.blend_threshold):
+        #     for i in xrange(3):
+        #         controllers[i].setPoint(predictor.endpoints[i])
+        #         actuators[i].duty_set = blending_law(controllers[i], received_parsed[a.js_index], predictor.alpha)
 
         for a in actuators:
             a.update_servo()
