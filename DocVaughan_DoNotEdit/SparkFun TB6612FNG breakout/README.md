@@ -1,2 +1,0 @@
-# Motor Control using the SparkFun TB6612FNG breakout board
-This folder contains motor control scripts that utilize the [SparkFun TB6612FNG breakout board](http://sfe.io/p9457). They include "simple" motor control, class-based control and monitoring, as well as more advanced usage such as using interrupts to control motors.
