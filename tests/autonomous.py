@@ -160,6 +160,10 @@ try:
                 c.setIntegrator(0)
                 c.setDerivator(0)
 
+            # Initialize set point for non-active actuators, so that error data is correct
+            # for i in range(4):
+            #     controllers[i].setPoint(poly.polyval(0, trajectory[i][1]))
+
             # Determine endpoints for each *active* actuator and an endpoint error vector (actuator space)
             for i in range(4):
                 if trajectory[i][0] == 0:
@@ -169,6 +173,7 @@ try:
                     endpoint[i] = poly.polyval(trajectory[i][0], trajectory[i][1])
                     endpoint_error[i] = measurements[i].value - endpoint[i]
                     endtime = trajectory[i][0]
+
             endpoint_error[3] = endpoint_error[3]*30  # scale swing error, [0, 1.571] to [0, 45], i.e., 2 degrees are penalized same as 1 cm on actuator
 
             # Time markers
