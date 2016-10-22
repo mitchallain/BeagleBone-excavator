@@ -231,9 +231,11 @@ class TriggerPrediction():
         confidence (float): probability that current task is nominal
         blend_threshold (float): mininum confidence to initiate blending
         alpha (float): BSC blending parameter alpha
-        subgoal: current triggered subgoal
-        active: assistance active
-        history: primitives and endpoints from recent history (window TBD)
+        subgoal (int): current triggered subgoal
+        prev 
+        regen (bool): flag to regenerate trajectories
+        active (bool): assistance active
+        history: primitives and endpoints from recent history (window TBD, not yet implemented)
     '''
     def __init__(self, mode, sg_model, alpha=0):
         self.mode = mode
@@ -245,7 +247,9 @@ class TriggerPrediction():
             #  We will see what goes here
 
         self.subgoal = 0            # Subgoal 0 denotes no subgoal to start
+        self.prev = 1
         self.active = False         # Active is bool, False means no assistance to start
+        self.regen = True
         self.sg_model = sg_model
 
         # Important: build a list of the subgoals for iterating
@@ -265,13 +269,24 @@ class TriggerPrediction():
             subgoal (int)
             active (bool)
         '''
+        # Below commented part is not functional, NEED TO INVESTIGATE
+        # Search first for a terminating cue in the expected subgoal, this is redundant but gives priority if termination regions overlap
+        # if [abs(ms_values[i] - self.sg_model[self.subgoal]['subgoal_pos'][i]) < self.sg_model[self.subgoal]['npt'][i] for i in range(4)] == [True]*4:
+        #     self.prev = self.subgoal
+        #     self.subgoal = (self.sg_model[self.subgoal]['subgoal'] % len(self.sg_list)) + 1  # i = (i % length) + 1 (some magic)
+        #     self.active = False
+        #     self.regen = True
+        #     return self.subgoal, self.active
+
         # Look for a terminating cue
         for sg in self.sg_model:
             # print([abs(ms_values[i] - sg['subgoal_pos'][i]) for i in range(4)])
             # print([(ms_values[i] - sg['subgoal_pos'][i]) < sg['npt'][i] for i in range(4)])
 
             if [abs(ms_values[i] - sg['subgoal_pos'][i]) < sg['npt'][i] for i in range(4)] == [True]*4:
+                self.prev = self.subgoal
                 self.subgoal = (sg['subgoal'] % len(self.sg_list)) + 1  # i = (i % length) + 1 (some magic)
+                self.regen = True
                 self.active = False
 
         less_than = ((js_inputs[self.sg_model[self.subgoal-1]['it'][0]] < self.sg_model[self.subgoal-1]['it'][1]))

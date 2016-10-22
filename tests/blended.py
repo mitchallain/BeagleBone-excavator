@@ -20,6 +20,8 @@ from excavator import *
 import socket
 import time
 from sg_model import sg_model
+from trajectories import *
+from PID import PID
 
 
 # Networking details
@@ -30,8 +32,15 @@ temp = exc_setup()
 actuators = temp[0]
 measurements = temp[1]
 
-# Initialize predictor, mode 0, alpha = 0.5
+# Initialize predictor, mode 0, alpha = 0.5, regen trajectories to start
 predictor = TriggerPrediction(0, sg_model, 0.5)
+
+# PI Controllers for each actuator
+boom_PI = PID(0.25, 0.02, 0, 0, 0, 2, -2)
+stick_PI = PID(0.25, 0.02, 0, 0, 0, 2, -2)
+bucket_PI = PID(0.25, 0.02, 0, 0, 0, 2, -2)
+swing_PI = PID(0.35, 0.02, 0, 0, 0, 2, -2)
+controllers = [boom_PI, stick_PI, bucket_PI, swing_PI]
 
 # Create a socket (SOCK_DGRAM means a UDP socket)
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -45,7 +54,15 @@ else:
     data = DataLogger(3, filename)
 
 start = time.time()
+step = 0
 received_parsed = [0, 0, 0, 0]
+p_dprev = [0, 0, 0, 0]
+
+# Initialize integrator and derivator to zero
+for c in controllers:
+    c.setIntegrator(0)
+    c.setDerivator(0)
+
 
 try:
     # Connect to server and send data
@@ -67,29 +84,44 @@ try:
         except ValueError:
             pass
 
-        # Prediction step
-        print predictor.update_state([received_parsed[a.js_index] for a in actuators], [m.value for m in measurements]), ["%.2f" % m.value for m in measurements]
+        # Initial prediction step
+        sg, active = predictor.update_state([received_parsed[a.js_index] for a in actuators], [m.value for m in measurements])
 
-        for a in actuators:
-            a.duty_set = a.duty_span*(received_parsed[a.js_index]+1)/(2) + a.duty_min
+        print sg, active
 
-        # # Calculate controller assistance for nominal tasks, must be in motion and above estimation confidence threshold
-        # if (predictor.primitive != 0) and (predictor.confidence > predictor.blend_threshold):
-        #     for i in xrange(3):
-        #         controllers[i].setPoint(predictor.endpoints[i])
-        #         actuators[i].duty_set = blending_law(controllers[i], received_parsed[a.js_index], predictor.alpha)
+        # If active and need new trajectories
+        if active and predictor.regen:
+            dt, amax, tf, Dmin, vmax = sine_traj(sg_model[predictor.prev]['subgoal_pos'], sg_model[sg]['subgoal_pos'], [0]*4, [18, 27, 30, 0.9], [10]*4)
+            predictor.regen = False
+            active_timer = time.time()
+            print dt, amax, tf, Dmin, vmax
 
-        for a in actuators:
+        # If active and already generated trajectories
+        if active:
+            p_d, _, _, _ = sine_func_v([active_timer-time.time()]*4, dt, tf, amax, vmax, sg_model[predictor.prev]['subgoal_pos'], [0]*4, [0]*4, sg_model[sg]['subgoal_pos'], p_dprev, (time.time()-step), Dmin)
+            step = time.time()
+            p_dprev = p_d
+            # Setpoint for controller
+            for i, c in enumerate(controllers):
+                c.setPoint(p_d[i])
+            alpha = predictor.alpha
+
+        # Apply blending law, alpha will either be static or zero, set duty, and update servo
+        for a, c, m in zip(actuators, controllers, measurements):
+            # u = blending_law(received_parsed[a.js_index], c.update(m.value), predictor.alpha*predictor.active)
+            u = blending_law(received_parsed[a.js_index], c.update(m.value), 0)
+            a.duty_set = a.duty_span * u/(2) + a.duty_mid
             a.update_servo()
 
-        # Data logging mode 2 (manual)
+        # print(active, predictor.subgoal, [a.duty_set for a in actuators])
+
         try:
             data.log([loop_start-start] +                           # Run-time clock
                      received_parsed +                              # BM, ST, BK, SW joystick Cmd
                      [c.PID for c in controllers] +                 # BM, ST, BK, SW controller outputs
                      [a.duty_set for a in actuators] +              # BM, ST, BK, SW duty cycle command
                      [m.value for m in measurements] +              # BM, ST, BK, SW measurements
-                     [predictor.primitive, predictor.confidence])   # Motion primitive and confidence
+                     [predictor.subgoal, 0])                        # Motion primitive and confidence
         except NameError:
             pass
 

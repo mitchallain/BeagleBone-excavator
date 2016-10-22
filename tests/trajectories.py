@@ -20,12 +20,12 @@
 
 import numpy as np
 import math
-import mat4py
-import scipy.linalg as linalg
+# import mat4py
+# import scipy.linalg as linalg
 
-
-temp = mat4py.loadmat('exc.mat')
-exc = temp['exc']
+## Need to install mat4py on BBB
+# temp = mat4py.loadmat('exc.mat')
+# exc = temp['exc']
 
 
 def forward_kin(exc, angle, cyl):
@@ -256,7 +256,7 @@ def quintic_coeff(t, l0, lf, t0=0, v0=0, vf=0, a0=0, af=0):
     return coeff
 
 
-def sine_traj(q0, qf, v0, vf, a0, af, j_max, active):
+def sine_traj(q0, qf, v0, vf, j_max=[10]*4):
     '''Function to compute the trajectory parameters using sinusoidal templates.
 
     Generates the maximum velocity, minimum distance traversed, maximum
@@ -265,9 +265,9 @@ def sine_traj(q0, qf, v0, vf, a0, af, j_max, active):
     Args:
         q0, qf -- Initial and final position
         v0, vf -- Initial and final velocity
-        a0, af -- Initial and final acceleration
+        a0, af -- Initial and final acceleration    (REMOVED)
         j_max -- Maximum jerk of the system
-        active -- Active trajectory check N/A
+        active -- Active trajectory check N/A       (REMOVED)
 
     Returns:
         dt -- time taken to reach maximum acceleration
@@ -282,7 +282,7 @@ def sine_traj(q0, qf, v0, vf, a0, af, j_max, active):
     '''
 
     # Initiate jerk, position, velocity and acceleration of each actuator.
-    j_max = [10]*4
+    # j_max = [10]*4
     # q0s = q0
     # v0s = v0
     # a0s = a0
@@ -306,7 +306,7 @@ def sine_traj(q0, qf, v0, vf, a0, af, j_max, active):
             # total desired actuator travel (q_f-q_0) and if initial velocity
             # is zero compute faster trajectories.
             if v0[j] == 0:
-                dt[j] = abs((np.pi*(qf[j]-q0[j]))/(2*j_max[j]*(4-(1/(2*np.pi*np.pi))))**(1/3.0))
+                dt[j] = abs((np.pi*(qf[j]-q0[j]))/(2*j_max[j]*(4-(1/(2*np.pi*np.pi)))))**(1/3.0)
                 amax[j] = np.sign(qf[j] - q0[j])*(2*j_max[j]*dt[j])/np.pi
                 #(vf-v0)/dt;%(qf-q0)/(2*dt*dt)
                 Dmin[j] = amax[j]*dt[j]*dt[j] + 2*v0[j]*dt[j]
@@ -352,10 +352,10 @@ def sine_func(t, dt, tf, amax, vmax, q0, v0, a0, qf, p_dprev, step, Dmin):
     #function [p_d,v_d,a_d,j_d] = sine_func(t,dt,tf,amax,vmax,q0,v0,a0,qf,p_dprev,step,Dmin)
 
     # Redefining the maximum jerk.
-    j_max = [10]*4
+    # j_max = [10]*4
 
     # Comment this if using precomputed vmax from sine_traj(..)
-    vmax = amax*dt  # Define maximum velocity based on maximum acceleration
+    # vmax = np.multiply(amax, dt)  # Define maximum velocity based on maximum acceleration
 
     # Compute the position, velocity, acceleration and jerk at time 't'.
     if t < (2*dt):
@@ -378,4 +378,9 @@ def sine_func(t, dt, tf, amax, vmax, q0, v0, a0, qf, p_dprev, step, Dmin):
         v_d = (amax/2)*(-(dt/np.pi)*np.sin((np.pi*t)/dt) + t) + vmax
         a_d = (amax/2)*(-np.cos((np.pi*t)/dt) + 1)
         j_d = ((amax*np.pi)/(2*dt))*np.sin((np.pi*t)/dt)
+
     return p_d, v_d, a_d, j_d
+
+
+# Vectorize the previous function
+sine_func_v = np.vectorize(sine_func)

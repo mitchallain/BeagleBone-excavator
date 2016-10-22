@@ -26,7 +26,7 @@ import time
 
 
 # Networking details
-HOST, PORT = '192.168.7.1', 9999
+HOST, PORT = '', 9999
 
 if __name__ == "__main__":
 
