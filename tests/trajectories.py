@@ -21,7 +21,7 @@
 import numpy as np
 import math
 # import mat4py
-# import scipy.linalg as linalg
+import numpy.linalg as linalg
 
 ## Need to install mat4py on BBB
 # temp = mat4py.loadmat('exc.mat')
@@ -222,6 +222,43 @@ def inverse_kin(exc, pos):
     return actuator
 
 
+def duration(q0, qf, vmax, amax):
+    '''Function to find duration of quintic trajectories for each actuator
+
+    Args:
+        q0 (list: float): start position
+        qf (list: float): endpoint position
+        vmax (list: float): list of velocity constraints
+        amax (list: float): list of acceleration contraints
+
+    Returns:
+        # duration (list: floats): list of durations for each actuator movement
+        max_dur (float): the largest duration in the list
+    '''
+    dim = len(q0)
+    t_a = [0]*dim
+    D_acc = [0]*dim
+    D_vmax = [0]*dim
+    duration = [0]*dim
+
+    for i in range(dim):
+        # Find acceleration time
+        t_a[i] = vmax[i]/amax[i]
+
+        # Find acceleration distance
+        D_acc[i] = (1/2.0)*amax[i]*(t_a[i]**2)
+
+        # Find remaining distance for constant vel
+        D_vmax[i] = abs(qf[i]-q0[i]) - 2*D_acc[i]
+
+        # Sum constant velocity time with 2*(accel time)
+        duration[i] = (D_vmax[i]/vmax[i]) + 2*t_a[i]
+
+    max_dur = max(duration)
+
+    return max_dur
+
+
 def quintic_coeff(t, l0, lf, t0=0, v0=0, vf=0, a0=0, af=0):
     '''Quintic trajectories from point to point in actuator space
 
@@ -250,7 +287,7 @@ def quintic_coeff(t, l0, lf, t0=0, v0=0, vf=0, a0=0, af=0):
                  [0]*4,
                  lf,
                  [0]*4,
-                 [0]*4]).transpose()
+                 [0]*4])
 
     coeff = linalg.lstsq(Q, L)[0].transpose()
     return coeff
@@ -286,13 +323,15 @@ def sine_traj(q0, qf, v0, vf, j_max=[10]*4):
     # q0s = q0
     # v0s = v0
     # a0s = a0
-
+    
     # Preallocate lists
     vmax = [0]*4
     amax = [0]*4
     Dmin = [0]*4
     dt = [0]*4
     tf = [0]*4
+
+    print 'In sine_traj: ', q0, qf, v0, vf, j_max, '\n'
 
     # Generating trajectories for each actuator
     for j in range(len(q0)):
@@ -326,7 +365,7 @@ def sine_traj(q0, qf, v0, vf, j_max=[10]*4):
     return dt, amax, tf, Dmin, vmax
 
 
-def sine_func(t, dt, tf, amax, vmax, q0, v0, a0, qf, p_dprev, step, Dmin):
+def sine_func(t, dt, tf, amax, vmax, q0, v0, a0, qf, p_dprev, Dmin):
     '''Missing info. From sine_func.m from DASLAB group
 
     Args:
@@ -340,7 +379,7 @@ def sine_func(t, dt, tf, amax, vmax, q0, v0, a0, qf, p_dprev, step, Dmin):
         a0 (float): initial acceleration
         qf (float): final position
         p_dprev (float): previous position
-        step (float): the hell if I know
+        step (float): the hell if I know (REMOVED)
         Dmin (float): minimum distance traveled during acceleration
 
     Returns:
@@ -364,7 +403,8 @@ def sine_func(t, dt, tf, amax, vmax, q0, v0, a0, qf, p_dprev, step, Dmin):
         a_d = (amax/2)*(-np.cos((np.pi*t)/dt) + 1)
         j_d = ((amax*np.pi)/(2*dt))*np.sin((np.pi*t)/dt)
     elif t < (tf - 2*dt):
-        p_d = p_dprev + vmax*step
+        # p_d = p_dprev + vmax*step
+        p_d = ((amax/2)*(((dt*dt)/(np.pi*np.pi))*np.cos((np.pi*2*dt)/dt)+((2*dt)**2)/2)-(amax*dt*dt)/(2*np.pi*np.pi) + q0) + (t-2*dt)*vmax
         v_d = vmax
         a_d = 0
         j_d = 0

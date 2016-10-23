@@ -19,7 +19,7 @@
 from excavator import *
 import socket
 import time
-from sg_model_1022 import sg_model
+from sg_model import sg_model
 from trajectories import *
 from PID import PID
 
@@ -33,13 +33,13 @@ actuators = temp[0]
 measurements = temp[1]
 
 # Initialize predictor, mode 0, alpha = 0.5, regen trajectories to start
-predictor = TriggerPrediction(1, sg_model, 0.5)
+predictor = TriggerPrediction(0, sg_model, 0.5)
 
 # PI Controllers for each actuator
-boom_PI = PID(1, 0, 0, 0, 0, 2, -2)
-stick_PI = PID(1, 0, 0, 0, 0, 2, -2)
-bucket_PI = PID(1, 0, 0, 0, 0, 2, -2)
-swing_PI = PID(1, 0, 0, 0, 0, 2, -2)
+boom_PI = PID(0.25, 0.02, 0, 0, 0, 2, -2)
+stick_PI = PID(0.25, 0.02, 0, 0, 0, 2, -2)
+bucket_PI = PID(0.25, 0.02, 0, 0, 0, 2, -2)
+swing_PI = PID(0.35, 0.02, 0, 0, 0, 2, -2)
 controllers = [boom_PI, stick_PI, bucket_PI, swing_PI]
 
 # Create a socket (SOCK_DGRAM means a UDP socket)
@@ -76,7 +76,7 @@ try:
             m.update_measurement()
 
         # # Receive joystick data from the server
-        received_joysticks = sock.recv(4096)
+        # received_joysticks = sock.recv(4096)
 
         # Parse data (and apply joystick deadzone)
         try:
@@ -91,40 +91,34 @@ try:
 
         # If active and need new trajectories
         if active and predictor.regen:
-            # Get max duration and trajecotry coefficients
-            dur = duration(sg_model[predictor.prev-1]['subgoal_pos'], sg_model[sg-1]['subgoal_pos'], [18, 27, 30, 0.9], [20]*4)
-            coeff = quintic_coeff(dur, sg_model[predictor.prev-1]['subgoal_pos'], sg_model[sg-1]['subgoal_pos'])
-
-            # Set flag to not regenerate trajectories
+            dt, amax, tf, Dmin, vmax = sine_traj(sg_model[predictor.prev-1]['subgoal_pos'], [(i+0.01) for i in sg_model[sg-1]['subgoal_pos']], [0]*4, [18, 27, 30, 0.9], [10]*4)
             predictor.regen = False
-            print('Trajectory coeff: ', coeff)
-
-            # Start a timer for the current trajectory
             active_timer = time.time()
+            print 'Sine traj: ', dt, amax, tf, Dmin, vmax, predictor.regen, '\n'
 
-        # If active, update PI set point and alpha
+        # If active and already generated trajectories
         if active:
-            # Saturate time for set point
-            t = time.time()-active_timer
-            if t > dur:
-                t = dur
-
+            p_d, _, _, _ = sine_func_v([active_timer-time.time()]*4, dt, tf, amax, vmax, sg_model[predictor.prev-1]['subgoal_pos'], [0]*4, [0]*4, sg_model[sg-1]['subgoal_pos'], p_dprev, Dmin)
+            step = time.time()
+            p_dprev = p_d
             # Setpoint for controller
             for i, c in enumerate(controllers):
-                c.setPoint(np.polyval(coeff[i][::-1], t))
-            # alpha = predictor.alpha
+                c.setPoint(p_d[i])
+            alpha = predictor.alpha
 
         # Apply blending law, alpha will either be static or zero, set duty, and update servo
         for a, c, m in zip(actuators, controllers, measurements):
-            u = blending_law(received_parsed[a.js_index], c.update(m.value), predictor.alpha*predictor.active)
-            # u = blending_law(received_parsed[a.js_index], c.update(m.value), 0)
+            # u = blending_law(received_parsed[a.js_index], c.update(m.value), predictor.alpha*predictor.active)
+            u = blending_law(received_parsed[a.js_index], c.update(m.value), 0)
             a.duty_set = a.duty_span * u/(2) + a.duty_mid
             a.update_servo()
+
+        # print(active, predictor.subgoal, [a.duty_set for a in actuators])
 
         try:
             data.log([loop_start-start] +                           # Run-time clock
                      received_parsed +                              # BM, ST, BK, SW joystick Cmd
-                     [c.PID for c in controllers] +                 # BM, ST, BK, SW controller outputs
+                     [c.set_point for c in controllers] +                 # BM, ST, BK, SW controller outputs
                      [a.duty_set for a in actuators] +              # BM, ST, BK, SW duty cycle command
                      [m.value for m in measurements] +              # BM, ST, BK, SW measurements
                      [predictor.subgoal, predictor.active])                        # Motion primitive and confidence
@@ -142,8 +136,3 @@ finally:
     time.sleep(1)
     for a in actuators:
         a.close_servo()
-    if data:
-        notes = raw_input('Notes about this trial: ')
-        n = open('data/metadata.csv', 'a')
-        n.write(filename + ',' + notes)
-        n.close()

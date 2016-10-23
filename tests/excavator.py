@@ -247,7 +247,7 @@ class TriggerPrediction():
             #  We will see what goes here
 
         self.subgoal = 0            # Subgoal 0 denotes no subgoal to start
-        self.prev = 1
+        self.prev = 6
         self.active = False         # Active is bool, False means no assistance to start
         self.regen = True
         self.sg_model = sg_model
@@ -282,9 +282,17 @@ class TriggerPrediction():
         for sg in self.sg_model:
             # print([abs(ms_values[i] - sg['subgoal_pos'][i]) for i in range(4)])
             # print([(ms_values[i] - sg['subgoal_pos'][i]) < sg['npt'][i] for i in range(4)])
-
-            if [abs(ms_values[i] - sg['subgoal_pos'][i]) < sg['npt'][i] for i in range(4)] == [True]*4:
-                self.prev = self.subgoal
+            
+            # Are we in a termination set?
+            termination = ([abs(ms_values[i] - sg['subgoal_pos'][i]) < sg['npt'][i] for i in range(4)] == [True]*4)
+            
+            # Is this termination set different from our previous subgoal termination?
+            # I.e., we don't want to reterminate in the same set over and over.
+            different = (sg['subgoal'] != self.prev)
+            
+            if termination and different:
+                print('Terminated: ', sg['subgoal'])
+                self.prev = sg['subgoal']
                 self.subgoal = (sg['subgoal'] % len(self.sg_list)) + 1  # i = (i % length) + 1 (some magic)
                 self.regen = True
                 self.active = False
