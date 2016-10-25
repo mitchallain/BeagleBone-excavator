@@ -15,6 +15,9 @@
 #   * October 15, 2016 - Encoder and DataLogger classes added
 #   * October 16, 2016 - js_index and toggle_invert added to Servo class to sort out inputs, probably a better way
 #   * October 19, 2016 - Added trigger based prediction class, TriggerPrediction, and reordered parser output
+#   * October 24, 2016 - Added homing routine
+#   *
+#   *
 #   *
 #
 ##########################################################################################
@@ -23,8 +26,9 @@ import Adafruit_BBIO.PWM as PWM
 import Adafruit_BBIO.ADC as ADC
 from bbio.libraries.RotaryEncoder import RotaryEncoder
 import numpy as np
-import datetime
-import os
+import time
+# import datetime
+# import os
 
 
 class Servo():
@@ -232,7 +236,7 @@ class TriggerPrediction():
         blend_threshold (float): mininum confidence to initiate blending
         alpha (float): BSC blending parameter alpha
         subgoal (int): current triggered subgoal
-        prev 
+        prev
         regen (bool): flag to regenerate trajectories
         active (bool): assistance active
         history: primitives and endpoints from recent history (window TBD, not yet implemented)
@@ -282,14 +286,14 @@ class TriggerPrediction():
         for sg in self.sg_model:
             # print([abs(ms_values[i] - sg['subgoal_pos'][i]) for i in range(4)])
             # print([(ms_values[i] - sg['subgoal_pos'][i]) < sg['npt'][i] for i in range(4)])
-            
+
             # Are we in a termination set?
             termination = ([abs(ms_values[i] - sg['subgoal_pos'][i]) < sg['npt'][i] for i in range(4)] == [True]*4)
-            
+
             # Is this termination set different from our previous subgoal termination?
             # I.e., we don't want to reterminate in the same set over and over.
             different = (sg['subgoal'] != self.prev)
-            
+
             if termination and different:
                 print('Terminated: ', sg['subgoal'])
                 self.prev = sg['subgoal']
@@ -359,11 +363,11 @@ def blending_law(operator_input, controller_output, alpha):
     return operator_input + alpha*(controller_output - operator_input)
 
 
-def name_date_time(file_name):
-    '''Returns string of format __file__ + '_mmdd_hhmm.csv' '''
-    n = datetime.datetime.now()
-    data_stamp = os.path.basename(file_name)[:-3] + '_' + n.strftime('%m%d_%H%M')+'.csv'
-    return data_stamp
+# def name_date_time(file_name):
+#     '''Returns string of format __file__ + '_mmdd_hhmm.csv' '''
+#     n = datetime.datetime.now()
+#     data_stamp = os.path.basename(file_name)[:-3] + '_' + n.strftime('%m%d_%H%M')+'.csv'
+#     return data_stamp
 
 
 def exc_setup():
@@ -392,3 +396,43 @@ def measurement_setup():
     swing_ms = Encoder()
     measurements = [boom_ms, stick_ms, bucket_ms, swing_ms]
     return measurements
+
+
+def homing(actuators, measurements, controllers, home):
+    for i in range(4):
+        controllers[i].setPoint(home[i])
+        controllers[i].update(measurements[i].value)
+    # tempstart = time.time()
+    try:
+        while np.linalg.norm([controllers[i].getError() for i in range(2)]+[controllers[3].getError()*30]) > 1:    # 1 cm radius ball about endpoint
+            # Measurement
+            for m in measurements:
+                m.update_measurement()
+                # print(m.value)
+
+            for i in range(4):
+                    # Update actuators with control action
+                    actuators[i].duty_set = controllers[i].update(measurements[i].value) + actuators[i].duty_mid
+
+            # Update PWM, saturation implemented in Servo class
+            for a in actuators:
+                a.update_servo()
+                # print(a.actuator_name + ': ' + str(a.duty_set))
+            # print('Error' + str(np.linalg.norm([controllers[i].getError() for i in range(2)]+[controllers[3].getError()*30])))
+
+        # for m in measurements:
+        #     print(m.value)
+
+        for a in actuators:  # Reset all duty cycles after homing
+            a.duty_set = a.duty_mid
+            a.update_servo()
+
+    except KeyboardInterrupt:
+        print '\nClosing PWM signals...'
+        for a in actuators:
+            a.duty_set = a.duty_mid
+            a.update_servo()
+        time.sleep(1)
+        for a in actuators:
+            a.close_servo()
+# END HOMING

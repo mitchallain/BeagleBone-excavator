@@ -11,6 +11,12 @@
 #   - Mitchell Allain
 #   - allain.mitch@gmail.com
 #
+# TODO
+#   - Saturate control action before blending law
+#   - Allow operator to end control action
+#   - Optimize (kill all stdout prints)
+#   -
+#
 # Modified:
 #   * October 17, 2016 - name changed to blended.py, all in place except predictor and controller
 #
@@ -24,17 +30,17 @@ from trajectories import *
 from PID import PID
 
 
-# Networking details
-HOST, PORT = '', 9999
-
+## I/O
 # Initialize PWM/servo classes and measurement classes, note: this zeros the encoder
 temp = exc_setup()
 actuators = temp[0]
 measurements = temp[1]
 
-# Initialize predictor, mode 0, alpha = 0.5, regen trajectories to start
+## PREDICTION
+# Initialize predictor, mode 1, alpha = 0.5
 predictor = TriggerPrediction(1, sg_model, 0.5)
 
+## CONTROLLERS
 # PI Controllers for each actuator
 boom_PI = PID(1, 0, 0, 0, 0, 2, -2)
 stick_PI = PID(1, 0, 0, 0, 0, 2, -2)
@@ -42,9 +48,19 @@ bucket_PI = PID(1, 0, 0, 0, 0, 2, -2)
 swing_PI = PID(1, 0, 0, 0, 0, 2, -2)
 controllers = [boom_PI, stick_PI, bucket_PI, swing_PI]
 
+# Initialize integrator and derivator to zero
+for c in controllers:
+    c.setIntegrator(0)
+    c.setDerivator(0)
+
+## NETWORKING
+# Networking details
+HOST, PORT = '', 9999
+
 # Create a socket (SOCK_DGRAM means a UDP socket)
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
+## DATA LOGGING
 # Initialize DataLogger class with mode 1 for manual
 filename = raw_input('Name the output file (end with .csv) or press return to disable data logging: ')
 if filename == '':
@@ -54,15 +70,9 @@ else:
     data = DataLogger(3, filename)
 
 start = time.time()
-step = 0
+
+# In case packets are dropped, we intialize the joystick inputs
 received_parsed = [0, 0, 0, 0]
-p_dprev = [0, 0, 0, 0]
-
-# Initialize integrator and derivator to zero
-for c in controllers:
-    c.setIntegrator(0)
-    c.setDerivator(0)
-
 
 try:
     # Connect to server and send data
@@ -86,8 +96,7 @@ try:
 
         # Initial prediction step
         sg, active = predictor.update_state([received_parsed[a.js_index] for a in actuators], [m.value for m in measurements])
-
-        print 'Subgoal State: ', sg, active, '\n'
+        # print 'Subgoal State: ', sg, active, '\n'
 
         # If active and need new trajectories
         if active and predictor.regen:
@@ -97,7 +106,7 @@ try:
 
             # Set flag to not regenerate trajectories
             predictor.regen = False
-            print('Trajectory coeff: ', coeff)
+            # print('Trajectory coeff: ', coeff)
 
             # Start a timer for the current trajectory
             active_timer = time.time()
@@ -111,7 +120,7 @@ try:
 
             # Setpoint for controller
             for i, c in enumerate(controllers):
-                c.setPoint(np.polyval(coeff[i][::-1], t))
+                c.setPoint(np.polyval(coeff[i][::-1], t))  # This version of polyval need highest degree first
             # alpha = predictor.alpha
 
         # Apply blending law, alpha will either be static or zero, set duty, and update servo
