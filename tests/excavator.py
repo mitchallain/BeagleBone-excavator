@@ -247,7 +247,9 @@ class TriggerPrediction():
             self.alpha = 0
         elif self.mode == 1:  # Static alpha subgoal predictive
             self.alpha = alpha
-        # elif self.mode == 2:
+        elif self.mode == 2:  # Static blending with input responsive on and off states
+            self.alpha = alpha
+        # elif self.mode == 3:
             #  We will see what goes here
 
         self.subgoal = 0            # Subgoal 0 denotes no subgoal to start
@@ -307,6 +309,8 @@ class TriggerPrediction():
         # print negative
         if not (less_than != negative):  # If input < threshold and threshold negative, or > = threshold and threshold positive
             self.active = True
+        elif self.mode == 2:
+            self.active = False
 
         return self.subgoal, self.active
 
@@ -398,31 +402,52 @@ def measurement_setup():
     return measurements
 
 
-def homing(actuators, measurements, controllers, home):
-    for i in range(4):
+def homing(actuators, measurements, controllers, home, error=[0, 0, 0, 0], dur=0):
+    '''Homes all actuators to home position using measurement list and controller list.
+
+    Args:
+        actuators (list: Servo): list of Servo objects to send PWM signals to
+        measurements (list: Measurement): list of Measurement objects to read position from
+        controllers (list: PID): list of PID objects for computing control action
+        home (list: floats): list of positions to seek
+
+    Returns:
+        None
+
+    TODO: extend function to arbitrary num of actuators by adding endpoint error condition arg
+
+    NOTE: All input lists must be of the same length
+    '''
+    dim = len(actuators)
+    if [dim]*3 != [len(measurements), len(controllers), len(home)]:
+        raise ValueError
+
+    for i in range(dim):
         controllers[i].setPoint(home[i])
         controllers[i].update(measurements[i].value)
-    # tempstart = time.time()
+
+    start = time.time()
+    run_time = 0
+
     try:
-        while np.linalg.norm([controllers[i].getError() for i in range(2)]+[controllers[3].getError()*30]) > 1:    # 1 cm radius ball about endpoint
+        while [(abs(home[i] - measurements[i].value) > error[i]) for i in range(dim)] == [True]*dim or (run_time < dur):
+        # while np.linalg.norm([controllers[i].getError() for i in range(2)]+[controllers[3].getError()*30]) > 1:    # 1 cm radius ball about endpoint
             # Measurement
             for m in measurements:
                 m.update_measurement()
                 # print(m.value)
 
-            for i in range(4):
+            for a, m, c in zip(actuators, measurements, controllers):
                     # Update actuators with control action
-                    actuators[i].duty_set = controllers[i].update(measurements[i].value) + actuators[i].duty_mid
+                    a.duty_set = c.update(m.value) + a.duty_mid
 
             # Update PWM, saturation implemented in Servo class
             for a in actuators:
                 a.update_servo()
                 # print(a.actuator_name + ': ' + str(a.duty_set))
             # print('Error' + str(np.linalg.norm([controllers[i].getError() for i in range(2)]+[controllers[3].getError()*30])))
-
-        # for m in measurements:
-        #     print(m.value)
-
+            run_time = time.time() - start
+            
         for a in actuators:  # Reset all duty cycles after homing
             a.duty_set = a.duty_mid
             a.update_servo()
@@ -436,3 +461,7 @@ def homing(actuators, measurements, controllers, home):
         for a in actuators:
             a.close_servo()
 # END HOMING
+
+
+def saturate(x, lower, upper):
+    return max(lower, min(x, upper))

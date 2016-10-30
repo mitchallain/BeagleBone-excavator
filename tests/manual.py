@@ -93,7 +93,7 @@ if __name__ == "__main__":
         time.sleep(1)
         for a in actuators:
             a.close_servo()
-        if data:
+        if 'data' in locals():
             notes = raw_input('Notes about this trial: ')
             n = open('data/metadata.csv', 'a')
             n.write(filename + ',' + notes)

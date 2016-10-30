@@ -19,6 +19,7 @@
 #
 # Modified:
 #   * October 17, 2016 - name changed to blended.py, all in place except predictor and controller
+#   * October 25, 2016 - input responsive blending, mode 2
 #
 ##########################################################################################
 
@@ -37,15 +38,15 @@ actuators = temp[0]
 measurements = temp[1]
 
 ## PREDICTION
-# Initialize predictor, mode 1, alpha = 0.5
+# Initialize predictor, mode 2 for input responsive, alpha = 0.5
 predictor = TriggerPrediction(1, sg_model, 0.5)
 
 ## CONTROLLERS
 # PI Controllers for each actuator
-boom_PI = PID(1, 0, 0, 0, 0, 2, -2)
-stick_PI = PID(1, 0, 0, 0, 0, 2, -2)
-bucket_PI = PID(1, 0, 0, 0, 0, 2, -2)
-swing_PI = PID(1, 0, 0, 0, 0, 2, -2)
+boom_PI = PID(15, 8, 0, 0, 0, 2, -2)
+stick_PI = PID(24, 10, 0, 0, 0, 2, -2)
+bucket_PI = PID(12, 7.56, 0, 0, 0, 2, -2)
+swing_PI = PID(10, 0.01, 0, 0, 0, 2, -2)
 controllers = [boom_PI, stick_PI, bucket_PI, swing_PI]
 
 # Initialize integrator and derivator to zero
