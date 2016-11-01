@@ -43,10 +43,10 @@ predictor = TriggerPrediction(2, sg_model, 0.5)
 
 ## CONTROLLERS
 # PI Controllers for each actuator
-boom_PI = PID(0.5, 0.04, 0, 0, 0, 4, -4)
-stick_PI = PID(0.75, 0.04, 0, 0, 0, 4, -4)
-bucket_PI = PID(0.5, 0.04, 0, 0, 0, 4, -4)
-swing_PI = PID(10, 0.01, 0, 0, 0, 4, -4)
+boom_PI = PID(10, 1, 0, 0, 0, 4, -4)
+stick_PI = PID(15, 1, 0, 0, 0, 4, -4)
+bucket_PI = PID(10, 1, 0, 0, 0, 4, -4)
+swing_PI = PID(10, 0.1, 0, 0, 0, 4, -4)
 controllers = [boom_PI, stick_PI, bucket_PI, swing_PI]
 
 # Initialize integrator and derivator to zero

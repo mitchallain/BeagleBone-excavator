@@ -309,6 +309,7 @@ class TriggerPrediction():
         # print negative
         if not (less_than != negative):  # If input < threshold and threshold negative, or > = threshold and threshold positive
             self.active = True
+            print(self.subgoal, 'True')
         elif self.mode == 2:
             self.active = False
 
