@@ -7,7 +7,7 @@
 # Autonomous operation of the excavator. Records data and timestamps.
 #
 # NOTE: SERVO CLASS, INTERPOLATE FUNCTION, AND MISC DEPENDENCIES IMPORTED FROM EXCAVATOR.PY
-#
+# 
 #       controllers act on error until within ball of endpoints in actuator space
 #
 #
@@ -24,7 +24,7 @@
 #   * October 11, 2016 - point to point actuator space trajectories in each
 #   * October 11, 2016 - going to switch dependecies to excavator
 #   * October 15, 2016 - encoder integration
-#   * October 24, 2016 - homing routine factored and placed at end
+#   * October 24, 2016 - homing routine factored
 #
 ##########################################################################################
 
@@ -155,7 +155,7 @@ home = [task[0][i][1][0] for i in range(4)]
 #             a.close_servo()
 # # END HOMING
 
-homing(actuators, measurements, controllers, home)
+homing(actuators, measurements, controllers, home, [0.3, 0.3, 0.3, 0.1], 10)
 raw_input('Pausing...')
 start = time.time()
 
@@ -233,8 +233,7 @@ try:
                 a.update_servo()
 
 except KeyboardInterrupt:
-    print '\nHoming'
-    homing(actuators, measurements, controllers, [10, 10, 2, 0])
+    print '\nQuitting'
 finally:
     print '\nClosing PWM signals...'
     for a in actuators:
@@ -243,7 +242,7 @@ finally:
     time.sleep(1)
     for a in actuators:
         a.close_servo()
-    if data:
+    if 'data' in locals():
         notes = raw_input('Notes about this trial: ')
         n = open('data/metadata.csv', 'a')
         n.write(filename + ',' + notes)

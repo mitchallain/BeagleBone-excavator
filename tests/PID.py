@@ -80,6 +80,36 @@ class PID:
         self.PID = self.P_value + self.I_value + self.D_value
 
         return self.PID
+        
+    def update_sat(self, current_value):
+        """Calculate PID output value for given reference input and feedback.
+            Applies saturation at [-1, 1]
+
+        Args:
+            current_value (float): current output of plant
+
+        Returns:
+            PID (float): controller output
+        """
+
+        self.error = self.set_point - current_value
+
+        self.P_value = self.Kp * self.error
+        self.D_value = self.Kd * (self.error - self.Derivator)
+        self.Derivator = self.error
+
+        self.Integrator = self.Integrator + self.error
+
+        if self.Integrator > self.Integrator_max:
+            self.Integrator = self.Integrator_max
+        elif self.Integrator < self.Integrator_min:
+            self.Integrator = self.Integrator_min
+
+        self.I_value = self.Integrator * self.Ki
+
+        self.PID = self.P_value + self.I_value + self.D_value
+
+        return max(min(self.PID, 1), -1)
 
     def setPoint(self, set_point):
         """

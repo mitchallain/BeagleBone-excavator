@@ -98,4 +98,3 @@ if __name__ == "__main__":
             n = open('data/metadata.csv', 'a')
             n.write(filename + ',' + notes)
             n.close()
-

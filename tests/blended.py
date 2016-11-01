@@ -39,14 +39,14 @@ measurements = temp[1]
 
 ## PREDICTION
 # Initialize predictor, mode 2 for input responsive, alpha = 0.5
-predictor = TriggerPrediction(1, sg_model, 0.5)
+predictor = TriggerPrediction(2, sg_model, 0.5)
 
 ## CONTROLLERS
 # PI Controllers for each actuator
-boom_PI = PID(15, 8, 0, 0, 0, 2, -2)
-stick_PI = PID(24, 10, 0, 0, 0, 2, -2)
-bucket_PI = PID(12, 7.56, 0, 0, 0, 2, -2)
-swing_PI = PID(10, 0.01, 0, 0, 0, 2, -2)
+boom_PI = PID(0.5, 0.04, 0, 0, 0, 4, -4)
+stick_PI = PID(0.75, 0.04, 0, 0, 0, 4, -4)
+bucket_PI = PID(0.5, 0.04, 0, 0, 0, 4, -4)
+swing_PI = PID(10, 0.01, 0, 0, 0, 4, -4)
 controllers = [boom_PI, stick_PI, bucket_PI, swing_PI]
 
 # Initialize integrator and derivator to zero
@@ -87,7 +87,7 @@ try:
             m.update_measurement()
 
         # # Receive joystick data from the server
-        received_joysticks = sock.recv(4096)
+        # received_joysticks = sock.recv(4096)
 
         # Parse data (and apply joystick deadzone)
         try:
@@ -102,8 +102,8 @@ try:
         # If active and need new trajectories
         if active and predictor.regen:
             # Get max duration and trajecotry coefficients
-            dur = duration(sg_model[predictor.prev-1]['subgoal_pos'], sg_model[sg-1]['subgoal_pos'], [18, 27, 30, 0.9], [20]*4)
-            coeff = quintic_coeff(dur, sg_model[predictor.prev-1]['subgoal_pos'], sg_model[sg-1]['subgoal_pos'])
+            dur = duration([m.value for m in measurements], sg_model[sg-1]['subgoal_pos'], [18, 27, 30, 0.9], [20]*4)
+            coeff = quintic_coeff(dur, [m.value for m in measurements], sg_model[sg-1]['subgoal_pos'])
 
             # Set flag to not regenerate trajectories
             predictor.regen = False
@@ -126,7 +126,7 @@ try:
 
         # Apply blending law, alpha will either be static or zero, set duty, and update servo
         for a, c, m in zip(actuators, controllers, measurements):
-            u = blending_law(received_parsed[a.js_index], c.update(m.value), predictor.alpha*predictor.active)
+            u = blending_law(received_parsed[a.js_index], c.update_sat(m.value), predictor.alpha*predictor.active)
             # u = blending_law(received_parsed[a.js_index], c.update(m.value), 0)
             a.duty_set = a.duty_span * u/(2) + a.duty_mid
             a.update_servo()
@@ -152,8 +152,8 @@ finally:
     time.sleep(1)
     for a in actuators:
         a.close_servo()
-    if data:
+    if 'data' in locals():
         notes = raw_input('Notes about this trial: ')
         n = open('data/metadata.csv', 'a')
-        n.write(filename + ',' + notes)
+        n.write('\n' + filename + ',' + notes)
         n.close()
