@@ -40,6 +40,7 @@ class Servo():
         duty_max (float): Maximum duty cycle
         actuator_name (str, optional): Used identify actuators
         js_index (int, optional): Index of joystick list corresponding to this actuator
+        offset (float): Deadband offset
 
     Attributes:
         duty_min (float): Minimum duty cycle
@@ -49,7 +50,7 @@ class Servo():
         actuator_name (str, optional): Used identify actuators
         js_index (int, optional): Index of joystick list corresponding to this actuator
         '''
-    def __init__(self, servo_pin, duty_min, duty_max, actuator_name='', js_index=0):
+    def __init__(self, servo_pin, duty_min, duty_max, actuator_name='', js_index=0, offset=0):
         self.duty_min = duty_min
         self.duty_max = duty_max
         self.duty_span = self.duty_max - self.duty_min
@@ -57,6 +58,7 @@ class Servo():
         self.duty_set = self.duty_mid
         self.actuator_name = actuator_name
         self.js_index = js_index
+        self.offset = offset
 
         self.servo_pin = servo_pin
         print 'starting servo PWM'
@@ -309,7 +311,7 @@ class TriggerPrediction():
         # print negative
         if not (less_than != negative):  # If input < threshold and threshold negative, or > = threshold and threshold positive
             self.active = True
-            print(self.subgoal, 'True')
+            print(self.subgoal, 'Ass: True')
         elif self.mode == 2:
             self.active = False
 
@@ -343,7 +345,7 @@ class TriggerPrediction():
 
 def parser(received, received_parsed):
     '''Parse joystick data from server_02.py, and convert to float'''
-    deadzone = 0.1
+    deadzone = 0.2
     toggle_invert = [1, 1, -1, -1]  # Invert [BM, SK, BK, SW] joystick
     try:
         received = received.translate(None, "[( )]").split(',')
@@ -358,14 +360,17 @@ def parser(received, received_parsed):
         raise ValueError
 
 
-def blending_law(operator_input, controller_output, alpha):
+def blending_law(operator_input, controller_output, alpha, offset=0):
     '''Blend inputs according to the following law:
 
         u_b = u + a*(u' - u)
 
         where u is the operator input, a is the alpha parameter, and u' is the controller output
+        
+        add offset to eliminate deadband
     '''
-    return operator_input + alpha*(controller_output - operator_input)
+    ub = operator_input + alpha*(controller_output - operator_input)
+    return (1 - offset) * ub + np.sign(ub) * offset
 
 
 # def name_date_time(file_name):
@@ -377,10 +382,10 @@ def blending_law(operator_input, controller_output, alpha):
 
 def exc_setup():
     '''Start all PWM classes and measurement classes'''
-    boom = Servo("P9_22", 4.939, 10.01, 'Boom', 0)
-    stick = Servo("P8_13", 4.929, 8.861, 'Stick', 1)
-    bucket = Servo("P8_34", 5.198, 10.03, 'Bucket', 2)
-    swing = Servo("P9_42", 4.939, 10, 'Swing', 3)
+    boom = Servo("P9_22", 4.939, 10.01, 'Boom', 0, 0.5)
+    stick = Servo("P8_13", 4.929, 9, 'Stick', 1, 0.5)
+    bucket = Servo("P8_34", 5.198, 10.03, 'Bucket', 2, 0.5)
+    swing = Servo("P9_42", 4.939, 10, 'Swing', 3, 0)
     actuators = [boom, stick, bucket, swing]
 
     # Initialize Measurement classes for string pots

@@ -64,6 +64,8 @@ if __name__ == "__main__":
                 received_parsed = parser(received_joysticks, received_parsed)
             except ValueError:
                 pass
+            
+            # print received_parsed
 
             for a in actuators:
                 a.duty_set = a.duty_span*(received_parsed[a.js_index]+1)/(2) + a.duty_min
@@ -81,7 +83,6 @@ if __name__ == "__main__":
                          [m.value for m in measurements])       # BM, ST, BK, SW Measurements
             except NameError:
                 pass
-
     except KeyboardInterrupt:
         print '\nQuitting'
     finally:

@@ -7,7 +7,7 @@
 # Autonomous operation of the excavator. Records data and timestamps.
 #
 # NOTE: SERVO CLASS, INTERPOLATE FUNCTION, AND MISC DEPENDENCIES IMPORTED FROM EXCAVATOR.PY
-#
+# 
 #       controllers act on error until within ball of endpoints in actuator space
 #
 #

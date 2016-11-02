@@ -26,7 +26,7 @@
 from excavator import *
 import socket
 import time
-from sg_model_1022 import sg_model
+from sg_model_1101 import sg_model
 from trajectories import *
 from PID import PID
 
@@ -43,9 +43,9 @@ predictor = TriggerPrediction(2, sg_model, 0.5)
 
 ## CONTROLLERS
 # PI Controllers for each actuator
-boom_PI = PID(10, 1, 0, 0, 0, 4, -4)
-stick_PI = PID(15, 1, 0, 0, 0, 4, -4)
-bucket_PI = PID(10, 1, 0, 0, 0, 4, -4)
+boom_PI = PID(1, 0.1, 0, 0, 0, 4, -4)
+stick_PI = PID(1.5, 0.1, 0, 0, 0, 4, -4)
+bucket_PI = PID(1, 0.1, 0, 0, 0, 4, -4)
 swing_PI = PID(10, 0.1, 0, 0, 0, 4, -4)
 controllers = [boom_PI, stick_PI, bucket_PI, swing_PI]
 
@@ -105,9 +105,13 @@ try:
             dur = duration([m.value for m in measurements], sg_model[sg-1]['subgoal_pos'], [18, 27, 30, 0.9], [20]*4)
             coeff = quintic_coeff(dur, [m.value for m in measurements], sg_model[sg-1]['subgoal_pos'])
 
+            # Reset integrator and differentiator
+            for c in controllers:
+                c.setIntegrator(0)
+                c.setDerivator(0)
+            
             # Set flag to not regenerate trajectories
             predictor.regen = False
-            # print('Trajectory coeff: ', coeff)
 
             # Start a timer for the current trajectory
             active_timer = time.time()
@@ -122,15 +126,24 @@ try:
             # Setpoint for controller
             for i, c in enumerate(controllers):
                 c.setPoint(np.polyval(coeff[i][::-1], t))  # This version of polyval need highest degree first
+            
+            # Turn off swing during subgoals 1, 2, 3
+            if (predictor.subgoal == 1) or (predictor.subgoal == 2) or (predictor.subgoal == 3):
+                controllers[3].setPoint(measurements[3].value)
+
             # alpha = predictor.alpha
 
         # Apply blending law, alpha will either be static or zero, set duty, and update servo
         for a, c, m in zip(actuators, controllers, measurements):
-            u = blending_law(received_parsed[a.js_index], c.update_sat(m.value), predictor.alpha*predictor.active)
+            u = blending_law(received_parsed[a.js_index], c.update_sat(m.value), predictor.alpha*predictor.active, a.offset)
+            # print a.actuator_name
+            # print c.PID_sat
+            # print received_parsed[a.js_index]
+            # print u
             # u = blending_law(received_parsed[a.js_index], c.update(m.value), 0)
             a.duty_set = a.duty_span * u/(2) + a.duty_mid
             a.update_servo()
-
+        
         try:
             data.log([loop_start-start] +                           # Run-time clock
                      received_parsed +                              # BM, ST, BK, SW joystick Cmd
@@ -144,6 +157,7 @@ try:
 except KeyboardInterrupt:
     print '\nQuitting'
 finally:
+    homing(actuators, measurements, controllers, [10, 10, 2, 0], [0.3, 0.3, 0.3, 0.05], 10)
     print '\nClosing PWM signals...'
     sock.close()
     for a in actuators:
