@@ -1,21 +1,24 @@
 #! /usr/bin/env python
 
 ##########################################################################################
-# trajectories.py
+# sim_kin.py
 #
 # This module computes the forward and inverse kinematics of the excavator,
 # i.e., from actuator space to joint space and end-effector pos, and back
 # Also, the sinusoidal-quintic trajectories between two points in end-effector space can be found
 #
-# NOTE:
+# NOTE: Derived from trajectories.py
 #
-# Created: October 18, 2016
+# Created: February 16, 2017
 #   - Mitchell Allain
 #   - allain.mitch@gmail.com
 #
 # Modified:
-#   * February 08, 2017 - duplicated trajectories to create analysis version NEED TO RESOLVE DUPES
-#   * Added exc_draw func to illustrate exc pose on 3D axis
+#   *
+#
+# To-Do:
+#   * Remove func draw_exc and replace with pygame equivalent
+#   *
 #
 ##########################################################################################
 
@@ -222,210 +225,6 @@ def inverse_kin(exc, pos):
 
     actuator = l
     return actuator
-
-
-def duration(q0, qf, vmax, amax):
-    '''Function to find duration of quintic trajectories for each actuator
-
-    Args:
-        q0 (list: float): start position
-        qf (list: float): endpoint position
-        vmax (list: float): list of velocity constraints
-        amax (list: float): list of acceleration contraints
-
-    Returns:
-        # duration (list: floats): list of durations for each actuator movement
-        max_dur (float): the largest duration in the list
-    '''
-    dim = len(q0)
-    t_a = [0]*dim
-    D_acc = [0]*dim
-    D_vmax = [0]*dim
-    duration = [0]*dim
-
-    for i in range(dim):
-        # Find acceleration time
-        t_a[i] = vmax[i]/amax[i]
-
-        # Find acceleration distance
-        D_acc[i] = (1/2.0)*amax[i]*(t_a[i]**2)
-
-        # Find remaining distance for constant vel
-        D_vmax[i] = abs(qf[i]-q0[i]) - 2*D_acc[i]
-
-        # Sum constant velocity time with 2*(accel time)
-        duration[i] = (D_vmax[i]/vmax[i]) + 2*t_a[i]
-
-    max_dur = max(duration)
-
-    return max_dur
-
-
-def quintic_coeff(t, l0, lf, t0=0, v0=0, vf=0, a0=0, af=0):
-    '''Quintic trajectories from point to point in actuator space
-
-    Args:
-        t (float): duration of movement
-        l0 (list: float): list of [swing starting angle, cylinder length starting points]
-        lf (list: float): list of [swing endpoint, cylinder length endpoints]
-
-    Returns:
-        coeff (numpy.array): numpy array of coefficients of three cylinders and actuator
-                             coefficients start with lowest order
-                             coeff = array([[SW...],
-                                            [BM...],
-                                            [SK...],
-                                            [BK...]]
-    '''
-    Q = np.array([[1, t0, t0**2, t0**3, t0**4, t0**5],
-                  [0,  1,  2*t0,  3*t0**2,  4*t0**3, 5*t0**4],
-                  [0, 0, 2, 6*t0, 12*t0**2, 20*t0**3],
-                  [1, t, t**2, t**3, t**4, t**5],
-                  [0, 1, 2*t, 3*t**2, 4*t**3, 5*t**4],
-                  [0, 0, 2, 6*t, 12*t**2, 20*t**3]])
-
-    L = np.array([l0,
-                 [0]*4,
-                 [0]*4,
-                 lf,
-                 [0]*4,
-                 [0]*4])
-
-    coeff = linalg.lstsq(Q, L)[0].transpose()
-    return coeff
-
-
-def sine_traj(q0, qf, v0, vf, j_max=[10]*4):
-    '''Function to compute the trajectory parameters using sinusoidal templates.
-
-    Generates the maximum velocity, minimum distance traversed, maximum
-    acceleration and time taken to move from q0,v0,a0 to qf,vf,af
-
-    Args:
-        q0, qf -- Initial and final position
-        v0, vf -- Initial and final velocity
-        a0, af -- Initial and final acceleration    (REMOVED)
-        j_max -- Maximum jerk of the system
-        active -- Active trajectory check N/A       (REMOVED)
-
-    Returns:
-        dt -- time taken to reach maximum acceleration
-        amax -- maximum possible acceleration
-        tf -- Computed final time.
-        Dmin -- Minimum distance traveled during acceleration
-        vmax -- Maximum velocity in during the traverse
-
-    Comments:
-        Also requires the function sine_func.m file to compute the
-        temporal points.
-    '''
-
-    # Initiate jerk, position, velocity and acceleration of each actuator.
-    # j_max = [10]*4
-    # q0s = q0
-    # v0s = v0
-    # a0s = a0
-
-    # Preallocate lists
-    vmax = [0]*4
-    amax = [0]*4
-    Dmin = [0]*4
-    dt = [0]*4
-    tf = [0]*4
-
-    print 'In sine_traj: ', q0, qf, v0, vf, j_max, '\n'
-
-    # Generating trajectories for each actuator
-    for j in range(len(q0)):
-        # Compute time taken for acceleration (dt), maximum acceleration
-        # achieved (amax), and distance traveled during acceleration (Dmin)
-        dt[j] = math.sqrt((abs(vf[j] - v0[j])*np.pi)/(2*j_max[j]))
-        amax[j] = (vf[j] - v0[j])/dt[j]
-        Dmin[j] = amax[j]*dt[j]*dt[j] + 2*v0[j]*dt[j]
-        if abs(2*Dmin[j]) > abs(qf[j]-q0[j]):
-            # If distance (Dmin) is more than the
-            # total desired actuator travel (q_f-q_0) and if initial velocity
-            # is zero compute faster trajectories.
-            if v0[j] == 0:
-                dt[j] = abs((np.pi*(qf[j]-q0[j]))/(2*j_max[j]*(4-(1/(2*np.pi*np.pi)))))**(1/3.0)
-                amax[j] = np.sign(qf[j] - q0[j])*(2*j_max[j]*dt[j])/np.pi
-                #(vf-v0)/dt;%(qf-q0)/(2*dt*dt)
-                Dmin[j] = amax[j]*dt[j]*dt[j] + 2*v0[j]*dt[j]
-                vmax[j] = amax[j]*dt[j]
-                # amax*dt*dt+2*v0*dt
-            else:
-                # reqs implicit solving
-                print('Implicit solve not here yet')
-        else:
-            # If Dmin is within the desired traverse range then compute the
-            # maximum velocity within the task.
-            vmax[j] = vf[j] - v0[j]
-
-        # Compute the time required to finish the travel.
-        tf[j] = 4*dt[j] + (abs(qf[j]-q0[j])-abs(2*Dmin[j]))/abs(vmax[j])
-
-    return dt, amax, tf, Dmin, vmax
-
-
-def sine_func(t, dt, tf, amax, vmax, q0, v0, a0, qf, p_dprev, Dmin):
-    '''Missing info. From sine_func.m from DASLAB group
-
-    Args:
-        t (float): time
-        dt (float): time to reach max acceleration?
-        tf (float): final time
-        amax (float): maximum possible acceleration
-        vmax (float): maximum possible velocity
-        q0 (float): initial position
-        v0 (float): initial velocity
-        a0 (float): initial acceleration
-        qf (float): final position
-        p_dprev (float): previous position
-        step (float): the hell if I know (REMOVED)
-        Dmin (float): minimum distance traveled during acceleration
-
-    Returns:
-        p_d (float): position at time t
-        v_d (float): velocity at time t
-        a_d (float): acceleration at time t
-        j_d (float): jerk at time t
-    '''
-    #function [p_d,v_d,a_d,j_d] = sine_func(t,dt,tf,amax,vmax,q0,v0,a0,qf,p_dprev,step,Dmin)
-
-    # Redefining the maximum jerk.
-    # j_max = [10]*4
-
-    # Comment this if using precomputed vmax from sine_traj(..)
-    # vmax = np.multiply(amax, dt)  # Define maximum velocity based on maximum acceleration
-
-    # Compute the position, velocity, acceleration and jerk at time 't'.
-    if t < (2*dt):
-        p_d = (amax/2)*(((dt*dt)/(np.pi*np.pi))*np.cos((np.pi*t)/dt)+(t*t)/2)-(amax*dt*dt)/(2*np.pi*np.pi) + q0
-        v_d = (amax/2)*(-(dt/np.pi)*np.sin((np.pi*t)/dt)+t)
-        a_d = (amax/2)*(-np.cos((np.pi*t)/dt) + 1)
-        j_d = ((amax*np.pi)/(2*dt))*np.sin((np.pi*t)/dt)
-    elif t < (tf - 2*dt):
-        # p_d = p_dprev + vmax*step
-        p_d = ((amax/2)*(((dt*dt)/(np.pi*np.pi))*np.cos((np.pi*2*dt)/dt)+((2*dt)**2)/2)-(amax*dt*dt)/(2*np.pi*np.pi) + q0) + (t-2*dt)*vmax
-        v_d = vmax
-        a_d = 0
-        j_d = 0
-    else:
-        vmax = amax*dt
-        amax = -amax
-        t = t - (tf - 2*dt)
-        p_d = (amax/2)*(((dt*dt)/(np.pi*np.pi))*np.cos((np.pi*t)/dt)+(t*t)/2)-(amax*dt*dt)/(2*np.pi*np.pi) + (qf - Dmin) + vmax*t
-        if abs(p_d-p_dprev) > 0.05:
-            stop = True
-        v_d = (amax/2)*(-(dt/np.pi)*np.sin((np.pi*t)/dt) + t) + vmax
-        a_d = (amax/2)*(-np.cos((np.pi*t)/dt) + 1)
-        j_d = ((amax*np.pi)/(2*dt))*np.sin((np.pi*t)/dt)
-
-    return p_d, v_d, a_d, j_d
-
-
-# Vectorize the previous function
-sine_func_v = np.vectorize(sine_func)
 
 
 def forward_kin_v(exc, sw, bm, sk, bk, bias=0):
