@@ -191,8 +191,8 @@ def rational_actor(subgoal, state):
     return np.array(action_class)
 
 
-def rational_actor_new(subgoal, state, code=(1, 2, 3), threshold=5):
-    '''Returns the action primitive tuple corresponding to rational cl controller
+def rational_action_primitive(subgoal, state, code=(1, 2, 3), threshold=5):
+    '''Returns the action primitive tuple corresponding to rational cl controller, with thresholding
 
     Args:
         subgoal (list): n-length vector corresponding to subgoal location
@@ -255,7 +255,7 @@ def bnirl_sampling(states, partitions, primitives, verbose=False, debug=False, e
         for j in set(partitions):  # existing partitions
             crp = partitions.count(j) / float(dim - 1 + eta)
 #             pdb.set_trace()
-            act_likelihood = np.e**(np.linalg.norm(primitives[i] - rational_actor_new(sg_means[j], state)))
+            act_likelihood = np.e**(np.linalg.norm(primitives[i] - rational_action_primitive(sg_means[j], state)))
 #             act_likelihood = 1
             # Compute partition assignment posterior
             part_posterior.append(crp*act_likelihood)
@@ -321,7 +321,7 @@ def bnirl_sampling_2(states, partitions, primitives, subgoals=dict(), verbose=Fa
         for j in set(partitions):  # existing partitions
             crp = partitions.count(j) / float(dim - 1 + eta)
 #             pdb.set_trace()
-            act_likelihood = np.e**(np.linalg.norm(primitives[i] - rational_actor_new(subgoals[j], state)))
+            act_likelihood = np.e**(np.linalg.norm(primitives[i] - rational_action_primitive(subgoals[j], state)))
 #             act_likelihood = 1
             # Compute partition assignment posterior
             part_posterior.append(crp*act_likelihood)
@@ -387,7 +387,7 @@ def bnirl_sampling_3(states, partitions, primitives, verbose=False, debug=False,
         # For each existing partition
         for j in set(partitions):  # existing partitions
             crp = partitions.count(j) / float(dim - 1 + eta)
-            act_likelihood = np.e**(np.linalg.norm(primitives[i] - rational_actor_new(states[j], state)))
+            act_likelihood = np.e**(np.linalg.norm(primitives[i] - rational_action_primitive(states[j], state)))
 
             # Compute partition assignment posterior
             part_posterior.append(crp*act_likelihood)
