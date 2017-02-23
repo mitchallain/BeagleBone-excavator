@@ -216,7 +216,7 @@ class ExcWireframe(Wireframe):
         # self.translate('y', 200)
 
         # self.predictor.update(self.js, self.state)
-        self.likelihood = initiation_action_likelihood(self.state, self.js, sg_dists)
+        self.likelihood = get_least_likelihood_uncorrelated(self.state, self.js, sg_dists)
 
 
 class Predictor():
@@ -258,7 +258,7 @@ class Predictor():
 class GaussianPredictor(Predictor):
     ''' Subclass of Predictor class '''
     def update(self, state, action):
-        self.subgoal_probability = get_least_likelihood_uncorrelated(state, action, self.subgoal_dists)
+        self.subgoal_probability = get_least_likelihood_uncorrelated(state, action, sg_dists)
 
 
 def get_mvn_action_likelihood(states, actions, means, covs):
