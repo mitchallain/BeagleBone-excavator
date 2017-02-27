@@ -22,6 +22,7 @@ import pygame
 import pdb
 import numpy as np
 import pickle
+import time
 
 
 # key_to_function = {
@@ -78,6 +79,7 @@ class ProjectionViewer:
                     running = False
                 elif (self.wireframes['exc'].js2.get_button(0) == 1) and self.savemode:
                     self.save.append(self.wireframes['exc'].state)
+                    time.sleep(0.5)
 
             # pygame.event.pump()
             self.update()
