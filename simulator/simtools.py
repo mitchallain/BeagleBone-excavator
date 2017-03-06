@@ -7,9 +7,10 @@ import pdb
 import time
 import datetime
 from data_logging import DataLogger
-from sg_model import sg_model
+# from sg_model import sg_model
 from subgoal_dists import sg_dists
 from scipy.stats import mvn
+import pickle
 
 
 class Node:
@@ -128,6 +129,10 @@ class ExcWireframe(Wireframe):
             self.logger = DataLogger(1, open(create_filename('sim'), 'w'))
         # self.predictor = TriggerPrediction(sg_model, 0)
         self.likelihood = np.zeros(6)
+        with open('gmm_model.pkl', 'rb') as savefile:
+            sgs = pickle.load(savefile)
+            self.means = sgs['means']
+            self.covs = sgs['covs']
 
     def forward_euler(self, dt):
         self.state = np.clip(self.state + self.vels*dt, [0, 0, 0, 0.3], [11.8, 12.8, 10.9, 1.2])  # update these
@@ -216,7 +221,7 @@ class ExcWireframe(Wireframe):
         # self.translate('y', 200)
 
         # self.predictor.update(self.js, self.state)
-        self.likelihood = get_least_likelihood_uncorrelated(self.state, self.js, sg_dists)
+        self.likelihood = get_mvn_action_likelihood(self.state, self.js, self.means, self.covs)[0]
 
 
 class Predictor():
@@ -258,7 +263,7 @@ class Predictor():
 class GaussianPredictor(Predictor):
     ''' Subclass of Predictor class '''
     def update(self, state, action):
-        self.subgoal_probability = get_least_likelihood_uncorrelated(state, action, sg_dists)
+        self.subgoal_probability = get_mvn_action_likelihood(state, action, self.means, self.covs)[0]
 
 
 def get_mvn_action_likelihood(states, actions, means, covs):
@@ -298,10 +303,15 @@ def get_mvn_action_likelihood(states, actions, means, covs):
                 else:  # Yields probability 1
                     low[j] = means[g, j] - 10 * covs[g, j, j]
                     upp[j] = means[g, j] + 10 * covs[g, j, j]
+            # pdb.set_trace()
             action_likelihoods[i, g], indicator[i, g] = mvn.mvnun(low, upp, means[g], covs[g])
-    if (indicator == 1).any():
-        raise ArithmeticError('Fortran function mvnun: error code 1')
-    return action_likelihoods, indicator
+            if (indicator[i, g] == 1):
+                print(low, upp, means[g], covs[g])
+    # if (indicator == 1).any():
+        # print('mvnun failed: error code 1')
+        # print(low, upp, means, covs)
+        # raise ArithmeticError('Fortran function mvnun: error code 1')
+    return action_likelihoods
 
 
 def get_least_likelihood_uncorrelated(state, action, subgoal_dists):
