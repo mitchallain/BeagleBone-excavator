@@ -61,7 +61,7 @@ if __name__ == "__main__":
 
             # Parse data (and apply joystick deadzone)
             try:
-                received_parsed = parser(received_joysticks, received_parsed)
+                received_parsed = parse_joystick(received_joysticks, received_parsed)
             except ValueError:
                 pass
             

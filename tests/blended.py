@@ -91,7 +91,7 @@ try:
 
         # Parse data (and apply joystick deadzone)
         try:
-            received_parsed = parser(sock.recv(4096), received_parsed)
+            received_parsed = parse_joystick(sock.recv(4096), received_parsed)
         except ValueError:
             pass
 
