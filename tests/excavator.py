@@ -16,8 +16,8 @@
 #   * October 16, 2016 - js_index and toggle_invert added to Servo class to sort out inputs, probably a better way
 #   * October 19, 2016 - Added trigger based prediction class, TriggerPrediction, and reordered parser output
 #   * October 24, 2016 - Added homing routine
-#   *
-#   *
+#   * February 17, 2017 - Cleanup and packaging
+#   * March 07, 2017 - Added Predictor and GaussianPredictor class
 #   *
 #
 ##########################################################################################
@@ -27,6 +27,8 @@ import Adafruit_BBIO.ADC as ADC
 from bbio.libraries.RotaryEncoder import RotaryEncoder
 import numpy as np
 import time
+import pickle
+from scipy.stats import mvn
 # import datetime
 # import os
 
@@ -151,75 +153,134 @@ class DataLogger():
         except IOError:
             print('IOError')
         if self.mode == 1:     # Manual mode
-            self.file.write('Time,Boom Cmd,Stick Cmd,Bucket Cmd,Swing Cmd,Boom Ms,Stick Ms,Bucket Ms,Swing Ms\n')
+            self.file.write('Time,Boom Cmd,Stick Cmd,Bucket Cmd,Swing Cmd,'
+                            'Boom Ms,Stick Ms,Bucket Ms,Swing Ms\n')
 
         elif self.mode == 2:   # Autonomous mode
-            self.file.write('Time,Boom Ms,Stick Ms,Bucket Ms,Swing Ms,Boom Cmd,Stick Cmd,Bucket Cmd,Swing Cmd,Boom Error,Stick Error,Bucket Error,Swing Error\n')
+            self.file.write('Time,Boom Ms,Stick Ms,Bucket Ms,Swing Ms,'
+                            'Boom Cmd,Stick Cmd,Bucket Cmd,Swing Cmd,'
+                            'Boom Error,Stick Error,Bucket Error,Swing Error\n')
 
         elif self.mode == 3:   # Blended mode (Commands, Controllers, Blended, Measurements, Class, Probability)
-            self.file.write('Time,Boom Cmd,Stick Cmd,Bucket Cmd,Swing Cmd,Boom Ctrl,Stick Ctrl,Bucket Ctrl,Swing Ctrl,Boom Blended,Stick Blended,Bucket Blended,Swing Blended,Boom Ms,Stick Ms,Bucket Ms,Swing Ms,Class,Confidence,\n')
+            self.file.write('Time,Boom Cmd,Stick Cmd,Bucket Cmd,Swing Cmd,'
+                            'Boom Ctrl,Stick Ctrl,Bucket Ctrl,Swing Ctrl,'
+                            'Boom Blended,Stick Blended,Bucket Blended,Swing Blended,'
+                            'Boom Ms,Stick Ms,Bucket Ms,Swing Ms,Class,Confidence,\n')
+
+        elif self.mode == 4:   # Blended mvn mode (Commands, Controllers, Blended, Measurements, Likelihoods, Subgoal, Alpha)
+            num_of_sgs = 6
+            sg_header = ','.join(['SG%i' % i for i in range(num_of_sgs)])
+            self.file.write('Time,Boom Cmd,Stick Cmd,Bucket Cmd,Swing Cmd,'
+                            'Boom Ctrl,Stick Ctrl,Bucket Ctrl,Swing Ctrl,'
+                            'Boom Blended,Stick Blended,Bucket Blended,Swing Blended,'
+                            'Boom Ms,Stick Ms,Bucket Ms,Swing Ms,' +
+                            sg_header +
+                            ',Class,Confidence,\n')
 
     def log(self, data_listed):
         self.file.write(','.join(map(str, data_listed))+'\n')
 
 
-class Prediction():
-    '''Prediction class does all the magic.
+class GaussianPredictor():
+    '''Abstract class for predictors, subclass and implement an update method
 
     Args:
-        mode (int): 0 is off, 1 is static alpha, 2 is dynamic alpha
-        model (string): string referencing the active task model
-        alpha (float): BSC blending parameter preset for static mode
+        subgoal_dists (np.array): list of k distributions of m variables
 
     Attributes:
-        mode (int): see above
-        model (obj):
-        endpoints (list, floats): endpoints for the current task
-        confidence (float): probability that current task is nominal
-        blend_threshold (float): mininum confidence to initiate blending
-        alpha (float): BSC blending parameter alpha
-        primitive: current blending primitive
-        history: primitives and endpoints from recent history (window TBD)
+        last_confirmed (int): index of last known subgoal in subgoal_dists
+        alpha (float): blending parameter
+
+    Methods:
+        get_alpha(): return self.alpha
+        update(): maps the values of subgoal_probability to a blending parameter value
     '''
-    def __init__(self, mode, model='', alpha=0):
-        self.mode = mode
-        if self.mode == 0:  # Blending off
+    def __init__(self, filename='gmm_model_exp.pkl'):
+        self.last_confirmed = -1
+        self.last_suspected = -1
+        self.alpha = 0
+        self.subgoal_probability = np.zeros(6)
+        self.alpha_threshold = 0.7
+        # Model params
+        with open(filename, 'rb') as openfile:
+            tmp = pickle.load(openfile)
+            self.means = tmp['means']
+            self.covs = tmp['covs']
+
+    def update(self, state, action):
+        self.subgoal_probability = get_mvn_action_likelihood(state, action, self.means, self.covs)[0]
+        max_ll = np.max(self.subgoal_probability)
+        if (max_ll > self.alpha_threshold):
+            self.alpha = lin_map(max_ll, 0.7, 1, 0.5, 0.8)
+            self.subgoal = np.argmax(self.subgoal_probability)
+        else:
             self.alpha = 0
-        elif self.mode == 1:  # Static alpha
-            self.alpha = alpha
-        # elif self.mode == 2:
-            #  We will see what goes here
 
-    def update_prediction(self, js_inputs, measurements):
-        '''Update our predictions for motion class and endpoints'''
-        # This is where all the magic happens
+    def get_target_sg_pos(self):
+        return self.means[self.subgoal_ind]
+
+    def check_if_terminated(self, state, threshold=0.8):
+        ''' See if state is within termination region, assign last subgoal'''
+        termination_probability = np.array([sg.pdf(state) for sg in self.subgoal_dists])
+        if (termination_probability > threshold).any():
+            self.last_confirmed = np.argmax(termination_probability) + 1
 
 
-# DEPRECATED
-# # Trying out some subgoal dicts, since they do not need to have information storage and are essentially just task models
-# sg_pile = {'subgoal': 1,
-#            'it': [3, -0.5],                                  # Joystick index 3 (swing) move left
-#            'subgoal_pos': [6.7528, 0.9117, 9.9466, 1.4058],  # Over the pile
-#            'npt': [3, 3, 3, 0.2],                            # Terminate when swing close to the pile
-#            'onpt': []}
+def get_mvn_action_likelihood(states, actions, means, covs):
+    ''' Taken from jupyter notebook gaussian-likelihood,
+        uses Alan Genz/Enthought Inc.'s multivariate normal Fortran functions in Scipy
 
-# sg_dump = {'subgoal': 2,                                     # WILL BE 6, JUST NEED THE ITERATOR TO WORK
-#            'subgoal_pos': [6.7528, 0.9117, 9.9466, 0.32],    # Subgoal position: uncurled over truck
-#            'it': [0, 0, -0.5, 0],                               # Input Trigger: bucket uncurl cmd
-#            'npt': [3, 3, 3, 0.2],                            # NPT: bucket uncurled
-#            'onpt': []}                                       # ONPT:
+    Args:
+        states (np.array): m-length state or n x m array of states
+        actions (np.array): m-length action or n x m array of actions
+        means (np.array): k x m array of means for k subgoals
+        covs (np.array): k x m x m array of m covariance matrices for k subgoals
 
-# sg_dig_model = [sg_pile, sg_dump]           # Listed dicts form model
-# del sg_pile, sg_dump                        # Clean-up namespace
+    Returns:
+        action_likelihoods (np.array): n x k array of likelihoods for each subgoal for n states
+
+    TODO:
+        marginalize inactive variables by dropping covariances instead of computing whole domain
+    '''
+    if states.shape != actions.shape:
+        raise ValueError('state and action args must have equal dimension.')
+    elif states.ndim == 1:
+        states = np.expand_dims(states, axis=0)
+        actions = np.expand_dims(actions, axis=0)
+    action_likelihoods = np.zeros((states.shape[0], means.shape[0]))
+    indicator = np.zeros(action_likelihoods.shape)
+    for i in xrange(states.shape[0]):
+        for g in xrange(means.shape[0]):
+            low = np.zeros(states.shape[1])
+            upp = np.copy(low)
+            for j in xrange(states.shape[1]):
+                if actions[i, j] < 0:
+                    low[j] = means[g, j] - 10 * covs[g, j, j]
+                    upp[j] = states[i, j]
+                elif actions[i, j] > 0:
+                    low[j] = states[i, j]
+                    upp[j] = means[g, j] + 10 * covs[g, j, j]
+                else:  # Yields probability 1
+                    low[j] = means[g, j] - 10 * covs[g, j, j]
+                    upp[j] = means[g, j] + 10 * covs[g, j, j]
+            # pdb.set_trace()
+            action_likelihoods[i, g], indicator[i, g] = mvn.mvnun(low, upp, means[g], covs[g], maxpts=100000)
+            if (indicator[i, g] == 1):
+                print(low, upp, means[g], covs[g])
+    # if (indicator == 1).any():
+        # print('mvnun failed: error code 1')
+        # print(low, upp, means, covs)
+        # raise ArithmeticError('Fortran function mvnun: error code 1')
+    return action_likelihoods
 
 
 class TriggerPrediction():
     '''The trigger prediction class uses task specific event triggers to determine the current subgoal
 
     Args:
-        mode (int): 0 is off, 1 is static alpha, 2 is dynamic alpha
-        model (list: dicts): list of subgoal model dicts, see example below
-        alpha (float): BSC blending parameter preset for static mode
+        sg_model (list: dicts): list of subgoal model dicts, see example below
+        mode (int): 0 only terminates, 1 is IFAC style
+        alpha (float): BSC blending parameter preset when active, can turn off with 0
 
     Example arg:
         sg_model = [{'subgoal': 1,
@@ -231,68 +292,42 @@ class TriggerPrediction():
                     {'subgoal': 2, ...
                     ...}]
     Attributes:
-        mode (int): see above
-        subgoal_model (obj):
-        endpoints (list, floats): endpoints for the current task
-        confidence (float): probability that current task is nominal
-        blend_threshold (float): mininum confidence to initiate blending
         alpha (float): BSC blending parameter alpha
         subgoal (int): current triggered subgoal
-        prev
+        prev (int): previous subgoal index
         regen (bool): flag to regenerate trajectories
         active (bool): assistance active
-        history: primitives and endpoints from recent history (window TBD, not yet implemented)
     '''
-    def __init__(self, mode, sg_model, alpha=0):
+    def __init__(self, sg_model, mode=1, alpha=0):
         self.mode = mode
-        if self.mode == 0:  # Blending off
-            self.alpha = 0
-        elif self.mode == 1:  # Static alpha subgoal predictive
-            self.alpha = alpha
-        elif self.mode == 2:  # Static blending with input responsive on and off states
-            self.alpha = alpha
-        # elif self.mode == 3:
-            #  We will see what goes here
+        self.alpha = alpha
+        self.sg_model = sg_model
 
-        self.subgoal = 0            # Subgoal 0 denotes no subgoal to start
-        self.prev = 6
+        self.dispatch = {0: self.update_0,
+                         1: self.update_1}
+
+        # self.subgoal = 0            # Subgoal 0 denotes no subgoal to start
+        # self.prev = 6
         self.active = False         # Active is bool, False means no assistance to start
         self.regen = True
-        self.sg_model = sg_model
 
         # Important: build a list of the subgoals for iterating
         self.sg_list = [self.sg_model[i]['subgoal'] for i in range(len(self.sg_model))]
 
-    def update_state(self, js_inputs, ms_values):
-        '''Poll event triggers and update subgoal and/or active boolean.
-
-        TODO:
-            fix sloppy indexing into sg_model, subgoals index from 1
-
+    def update(self, state, action):
+        ''' General update dispatch function
         Args:
-            js_inputs (list: float): a list of js_inputs in the form [BM, SK, BK, SW]
-            ms_values (list: float): listed measurement values for each actuator
-
-        Returns:
-            subgoal (int)
-            active (bool)
+            state (np.array): m-length array of measurements
+            action (np.array): m-length array of normalized (and deadbanded) inputs
         '''
-        # Below commented part is not functional, NEED TO INVESTIGATE
-        # Search first for a terminating cue in the expected subgoal, this is redundant but gives priority if termination regions overlap
-        # if [abs(ms_values[i] - self.sg_model[self.subgoal]['subgoal_pos'][i]) < self.sg_model[self.subgoal]['npt'][i] for i in range(4)] == [True]*4:
-        #     self.prev = self.subgoal
-        #     self.subgoal = (self.sg_model[self.subgoal]['subgoal'] % len(self.sg_list)) + 1  # i = (i % length) + 1 (some magic)
-        #     self.active = False
-        #     self.regen = True
-        #     return self.subgoal, self.active
+        self.dispatch[self.mode](state, action)
 
+    def update_0(self, state, action):
+        ''' Mode 0: only terminates'''
         # Look for a terminating cue
         for sg in self.sg_model:
-            # print([abs(ms_values[i] - sg['subgoal_pos'][i]) for i in range(4)])
-            # print([(ms_values[i] - sg['subgoal_pos'][i]) < sg['npt'][i] for i in range(4)])
-
             # Are we in a termination set?
-            termination = ([abs(ms_values[i] - sg['subgoal_pos'][i]) < sg['npt'][i] for i in range(4)] == [True]*4)
+            termination = ([abs(state[i] - sg['subgoal_pos'][i]) < sg['npt'][i] for i in range(4)] == [True]*4)
 
             # Is this termination set different from our previous subgoal termination?
             # I.e., we don't want to reterminate in the same set over and over.
@@ -305,45 +340,37 @@ class TriggerPrediction():
                 self.regen = True
                 self.active = False
 
-        less_than = ((js_inputs[self.sg_model[self.subgoal-1]['it'][0]] < self.sg_model[self.subgoal-1]['it'][1]))
+    def update_1(self, state, action):
+        ''' Mode 1: IFAC style FSM predictor '''
+
+        # Look for a terminating cue
+        for sg in self.sg_model:
+            # Are we in a termination set?
+            termination = ([abs(state[i] - sg['subgoal_pos'][i]) < sg['npt'][i] for i in range(4)] == [True]*4)
+
+            # Is this termination set different from our previous subgoal termination?
+            # I.e., we don't want to reterminate in the same set over and over.
+            different = (sg['subgoal'] != self.prev)
+
+            if termination and different:
+                print('Terminated: ', sg['subgoal'])
+                self.prev = sg['subgoal']
+                self.subgoal = (sg['subgoal'] + 1) % len(self.sg_list)  # i = (i % length) + 1 (some magic)
+                self.regen = True
+                self.active = False
+
+        less_than = ((action[self.sg_model[self.subgoal-1]['it'][0]] < self.sg_model[self.subgoal-1]['it'][1]))
         # print less_than
         negative = ((self.sg_model[self.subgoal-1]['it'][1]) < 0)
         # print negative
         if not (less_than != negative):  # If input < threshold and threshold negative, or > = threshold and threshold positive
             self.active = True
             print(self.subgoal, 'Ass: True')
-        elif self.mode == 2:
-            self.active = False
 
         return self.subgoal, self.active
 
-# DEPRECATED
-# class Subgoal():
-#     '''Subgoal class contains information about triggers of subgoals.
 
-#     Proximity triggers terminate the subgoal, input triggers initiate the subgoal.
-
-#     Args:
-#         subgoal (list: float): the subgoals position in the exc base frame (x, y, z, theta)
-#         it (list: floats): input triggers, joystick states that initiate a subgoal
-#         npt (list: floats): nominal proximity triggers, mark a nominal task termination
-#         onpt (list: floats): off-nominal proximity triggers, mark an off nominal transition
-#
-#     Attributes:
-#         subgoal (int): the integer key corresponding to the subgoal
-#         subgoal_pos (list: floats): see above
-#         it (list: floats)
-#         npt (list: floats)
-#         onpt (list: floats)
-#         active (bool): whether or not the subgoal is currently triggered (active from initiate to terminate)
-#     '''
-#     def __init__(self, subgoal, subgoal_pos, it, npt, onpt):
-#         self.subgoal = subgoal
-#         self.nominal_proximity_triggers = nominal_proximity_triggers
-#         self.input_triggers = input_triggers
-
-
-def parser(received, received_parsed):
+def parse_joystick(received, received_parsed):
     '''Parse joystick data from server_02.py, and convert to float'''
     deadzone = 0.2
     toggle_invert = [1, 1, -1, -1]  # Invert [BM, SK, BK, SW] joystick
@@ -366,11 +393,17 @@ def blending_law(operator_input, controller_output, alpha, offset=0):
         u_b = u + a*(u' - u)
 
         where u is the operator input, a is the alpha parameter, and u' is the controller output
-        
+
         add offset to eliminate deadband
     '''
     ub = operator_input + alpha*(controller_output - operator_input)
     return (1 - offset) * ub + np.sign(ub) * offset
+
+
+def lin_map(x, a, b, u, v):
+    ''' Maps x from interval (A, B) to interval (a, b)
+    TODO: make multidimensional'''
+    return (x - a) * ((v - u) / (b - a)) + a
 
 
 # def name_date_time(file_name):
@@ -453,7 +486,7 @@ def homing(actuators, measurements, controllers, home, error=[0, 0, 0, 0], dur=0
                 # print(a.actuator_name + ': ' + str(a.duty_set))
             # print('Error' + str(np.linalg.norm([controllers[i].getError() for i in range(2)]+[controllers[3].getError()*30])))
             run_time = time.time() - start
-            
+
         for a in actuators:  # Reset all duty cycles after homing
             a.duty_set = a.duty_mid
             a.update_servo()
