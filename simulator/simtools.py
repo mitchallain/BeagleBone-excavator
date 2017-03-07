@@ -221,7 +221,7 @@ class ExcWireframe(Wireframe):
         # self.translate('y', 200)
 
         # self.predictor.update(self.js, self.state)
-        self.likelihood = get_mvn_action_likelihood(self.state, self.js, self.means, self.covs)[0]
+        self.likelihood = get_mvn_action_likelihood_marginal(self.state, self.js, self.means, self.covs)[0]
 
 
 class Predictor():
@@ -304,9 +304,73 @@ def get_mvn_action_likelihood(states, actions, means, covs):
                     low[j] = means[g, j] - 10 * covs[g, j, j]
                     upp[j] = means[g, j] + 10 * covs[g, j, j]
             # pdb.set_trace()
-            action_likelihoods[i, g], indicator[i, g] = mvn.mvnun(low, upp, means[g], covs[g])
+            action_likelihoods[i, g], indicator[i, g] = mvn.mvnun(low, upp, means[g], covs[g], maxpts=100000)
             if (indicator[i, g] == 1):
                 print(low, upp, means[g], covs[g])
+    # if (indicator == 1).any():
+        # print('mvnun failed: error code 1')
+        # print(low, upp, means, covs)
+        # raise ArithmeticError('Fortran function mvnun: error code 1')
+    return action_likelihoods
+
+
+def get_mvn_action_likelihood_marginal(states, actions, means, covs):
+    ''' Rewriting the original multivariate action likelihood to marginalize out inactive vars
+        uses Alan Genz/Enthought Inc.'s multivariate normal Fortran functions in Scipy
+
+    Args:
+        states (np.array): m-length state or n x m array of states
+        actions (np.array): m-length action or n x m array of actions
+        means (np.array): k x m array of means for k subgoals
+        covs (np.array): k x m x m array of m covariance matrices for k subgoals
+
+    Returns:
+        action_likelihoods (np.array): n x k array of likelihoods for each subgoal for n states
+
+    TODO:
+        marginalize inactive variables by dropping covariances instead of computing whole domain
+    '''
+
+    if states.shape != actions.shape:
+        raise ValueError('state and action args must have equal dimension.')
+
+    elif states.ndim == 1:
+        states = np.expand_dims(states, axis=0)
+        actions = np.expand_dims(actions, axis=0)
+
+    action_likelihoods = np.zeros((states.shape[0], means.shape[0]))
+    indicator = np.zeros(action_likelihoods.shape)
+
+    # For state, action pair index i
+    for i in xrange(states.shape[0]):
+        # Find active axes and skip if null input
+        active = np.where(actions[i] != 0)[0]
+        if active.size == 0:
+            break
+
+        # Else, compute mvn pdf integration for each subgoal
+        for g in xrange(means.shape[0]):
+            low = np.zeros(active.shape)
+            upp = np.copy(low)
+
+            # Iterate through active indices and set low and upper bounds of ATD action-targeted domain
+            # Bounds at +/-10 sig figs because no option for infinite, check this is sufficient b/c skew
+            for num, j in enumerate(active):
+                if actions[i, j] < 0:  # Negative action
+                    low[num] = means[g, j] - 10 * covs[g, j, j]
+                    upp[num] = states[i, j]
+                else:  # Postive action
+                    low[num] = states[i, j]
+                    upp[num] = means[g, j] + 10 * covs[g, j, j]
+
+            # Marginalize out inactive variables by dropping means and covariances
+            means_marg = means[g][active]
+            covs_marg = covs[g][active][:, active]
+            # pdb.set_trace()
+            action_likelihoods[i, g], indicator[i, g] = mvn.mvnun(low, upp, means_marg, covs_marg, maxpts=100000)
+
+            if (indicator[i, g] == 1):
+                print(low, upp, means_marg, covs_marg)
     # if (indicator == 1).any():
         # print('mvnun failed: error code 1')
         # print(low, upp, means, covs)
