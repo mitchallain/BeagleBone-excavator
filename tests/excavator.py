@@ -93,12 +93,12 @@ class Measurement():
         ADC.setup()
         self.GPIO_pin = GPIO_pin
         self.measure_type = measure_type
-        self.lookup = {'boom': [[536.0, 564.0, 590.0, 627.0, 667.0, 704.0, 717.0, 741.0, 763.0, 789.0, 812.0, 832.0, 848.0, 864.0, 883.0, 901.0, 914.0],    # BM Analog Input
-                                [0, 7.89, 14.32, 22.64, 33.27, 47.4, 50.7, 57.6, 64.2, 72.1, 80.0, 87.4, 93.4, 99.9, 107, 113.4, 118.6]],                   # BM Displacement mm
+        self.lookup = {'boom': [[536.0, 564.0, 590.0, 627.0, 667.0, 704.0, 727.0, 762.0, 793.0, 813.0, 834.0, 849.0, 863.0, 881.0, 893.0, 909.0],    # BM Analog Input
+                                [0, 7.89, 14.32, 22.64, 33.27, 47.4, 56.5, 66.26, 75.85, 82.75, 90.5, 95.3, 101.2, 107.7, 112.7, 118.7]],                   # BM Displacement mm
                        'stick': [[554.0, 602.0, 633.0, 660.0, 680.0, 707.0, 736.0, 762.0, 795.0, 820.0, 835.0, 867.0, 892.0, 919.0, 940.0, 959.0, 983.0, 1007.0, 1019.0],    # SK Analog Input
                                 [0, 11.7, 19.2, 26.2, 31, 38.4, 46.3, 53.7, 63.4, 71.5, 76.3, 87.0, 96.4, 106.1, 114.5, 122.1, 132.2, 143.1, 148.5]],                        # SK Displacement mm
-                       'bucket': [[173.0, 210.0, 258.0, 297.0, 355.0, 382.0, 429.0, 469.0, 500.0, 539.0, 578.0, 612.0, 628.0, 634.0],
-                                [0, 8, 16.5, 23.9, 36.4, 42.4, 53.5, 63.7, 71.6, 81.8, 92.7, 102.5, 107.3, 109]]}
+                       'bucket': [[153.0, 187.0, 235.0, 299.0, 346.0, 372.0, 412.0, 440.0, 477.0, 511.0, 529.0, 567.0, 588.0, 602.0, 605.0, 623.0],
+                                [0, 7.28, 15.89, 27.69, 37.3, 43.4, 52.6, 59.63, 68.86, 77.5, 82.5, 92.07, 98.25, 102.3, 103.15, 109.07]]}
 
     def update_measurement(self):
         '''Uses lookup tables and current analog in value to find actuator displacement'''
@@ -148,6 +148,7 @@ class DataLogger():
     '''
     def __init__(self, mode, filename):
         self.mode = mode
+        self.filename = filename
         try:
             self.file = open('data/'+filename, 'w')
         except IOError:
@@ -177,8 +178,17 @@ class DataLogger():
                             sg_header +
                             ',Class,Confidence,\n')
 
+
     def log(self, data_listed):
         self.file.write(','.join(map(str, data_listed))+'\n')
+
+    def close(self):
+        ''' Close is coupled to metadata creation to *encourage* trial notes '''
+        notes = raw_input('Notes about this trial: ')
+        n = open('data/metadata.csv', 'a')
+        n.write(self.filename + ',' + notes)
+        n.close()
+        self.file.close()
 
 
 class GaussianPredictor():
@@ -376,7 +386,7 @@ def parse_joystick(received, received_parsed):
     toggle_invert = [1, 1, -1, -1]  # Invert [BM, SK, BK, SW] joystick
     try:
         received = received.translate(None, "[( )]").split(',')
-        for axis in range(len(received)):
+        for axis in xrange(len(received)):
             if (float(received[axis]) > deadzone) or (float(received[axis]) < -deadzone):
                 received_parsed[axis] = float(received[axis])*toggle_invert[axis]
             else:
@@ -429,6 +439,15 @@ def exc_setup():
     swing_ms = Encoder()
     measurements = [boom_ms, stick_ms, bucket_ms, swing_ms]
     return actuators, measurements
+
+
+def actuator_setup():
+    '''Start all PWM classes'''
+    boom = Servo("P9_22", 4.939, 10.01, 'Boom', 0, 0.5)
+    stick = Servo("P8_13", 4.929, 9, 'Stick', 1, 0.5)
+    bucket = Servo("P8_34", 5.198, 10.03, 'Bucket', 2, 0.5)
+    swing = Servo("P9_42", 4.939, 10, 'Swing', 3, 0)
+    return [boom, stick, bucket, swing]
 
 
 def measurement_setup():
