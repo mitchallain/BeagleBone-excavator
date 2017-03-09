@@ -83,6 +83,10 @@ if __name__ == "__main__":
                          [m.value for m in measurements])       # BM, ST, BK, SW Measurements
             except NameError:
                 pass
+
+            # Soft timing
+            while (time.time() - loop_start) < 0.05:
+                pass
     except KeyboardInterrupt:
         print '\nQuitting'
     finally:
