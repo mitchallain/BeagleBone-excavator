@@ -18,6 +18,7 @@
 ##########################################################################################
 
 import Adafruit_BBIO.ADC as ADC
+import time
 
 
 if __name__ == "__main__":
@@ -28,13 +29,17 @@ if __name__ == "__main__":
     potMeasure = []
 
     while True:
-        user = input("Enter a distance or 'exit': ")
-
-        if user == 'exit':
-            break
-        else:
-            potMeasure.append(ADC.read_raw('P9_33'))
-            calMeasure.append(user)
-
+        try:
+            user = input("Enter a distance or 'exit': ")
+    
+            if user == 'exit':
+                break
+            else:
+                potMeasure.append(ADC.read_raw('P9_35'))
+                calMeasure.append(user)
+            time.sleep(0.2)
+        finally:
+            print calMeasure
+            print potMeasure
     print calMeasure
     print potMeasure
