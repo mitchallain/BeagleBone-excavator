@@ -13,7 +13,8 @@
 #   - allain.mitch@gmail.com
 #
 # Modified:
-#   *
+#   * March 10, 2017 -  refactored simtools.py to better utilize excavator.py
+#   *                   also, 
 #
 ##########################################################################################
 
@@ -87,12 +88,16 @@ class ProjectionViewer:
             self.display()
             # render text
             # print(self.wireframes['exc'].predictor.subgoal)
-            self.subgoal_label = self.myfont.render("Likelihood: %s" % ['%.2f' % elem for elem in self.wireframes['exc'].likelihood.tolist()], 1, (200, 200, 200))
+            self.subgoal_label = self.myfont.render("Likelihood: %s" % ['%.2f' % elem for elem in self.wireframes['exc'].gp.subgoal_probability.tolist()], 1, (200, 200, 200))
             self.screen.blit(self.subgoal_label, (20, 20))
-            self.subgoal_label = self.myfont.render("Subgoal: %i, %.2f" % (np.argmax(self.wireframes['exc'].likelihood) + 1, np.max(self.wireframes['exc'].likelihood)), 1, (200, 200, 200))
+            self.subgoal_label = self.myfont.render("Subgoal: %i, Ll: %.2f, Alpha: %.2f" % (np.argmax(self.wireframes['exc'].gp.subgoal_probability) + 1,
+                                                                                            np.max(self.wireframes['exc'].gp.subgoal_probability),
+                                                                                            self.wireframes['exc'].gp.alpha), 1, (200, 200, 200))
             self.screen.blit(self.subgoal_label, (20, 60))
-            self.state_label = self.myfont.render("State: %s" % self.wireframes['exc'].state, 1, (200, 200, 200))
+            self.state_label = self.myfont.render("Perturbation: %s" % ['%.2f' % elem for elem in self.wireframes['exc'].perturb.tolist()], 1, (200, 200, 200))
             self.screen.blit(self.state_label, (20, 100))
+            # self.state_label = self.myfont.render("Command: %s" % ['%.2f' % elem for elem in self.wireframes['exc'].perturb.tolist()], 1, (200, 200, 200))
+            # self.screen.blit(self.state_label, (20, 140))
             pygame.display.flip()
 
     def update(self):  # read joysticks and apply to excavator
@@ -167,17 +172,22 @@ if __name__ == '__main__':
     exc = simtools.ExcWireframe(js1, js2, order, log=False)
     pv.addWireframe('exc', exc)
 
-    # Bucket wireframe
-    bucket = simtools.Wireframe()
-    bucket.addNodes([(x, y, z) for x in (37, 67.5) for y in (-9, 9) for z in (0, 15)])
-    bucket.addEdges([(n, n+1) for n in [0, 2, 4, 6]] + [(n, n+4) for n in range(4)] + [(n, n+2) for n in [0, 1, 4, 5]])
-    pv.addWireframe('bucket', bucket)
+    # Truck wireframe
+    truck = simtools.Wireframe()
+    truck.addNodes([(x, y, z) for x in (37, 67.5) for y in (-9, 9) for z in (0, 15)])
+    truck.addEdges([(n, n+1) for n in [0, 2, 4, 6]] + [(n, n+4) for n in range(4)] + [(n, n+2) for n in [0, 1, 4, 5]])
+    pv.addWireframe('truck', truck)
 
     # Pile wireframe
     pile = simtools.Wireframe()
     pile.addNodes([(x, 38, 0) for x in (2, 42)] + [(x, 78, 0) for x in (42, 2)] + [(22, 58, 30)])
     pile.addEdges([(n, 4) for n in range(4)] + [(n, (n + 1) % 4) for n in range(4)])
     pv.addWireframe('pile', pile)
+
+    # Subgoal Nodes
+    subgoals = simtools.Wireframe()
+    subgoals.addNodes([simtools.forward_kin(mean) for mean in exc.gp.means])
+    pv.addWireframe('subgoals', subgoals)
 
     # Prepare orientation of scene HAS TO MATCH EXC UPDATE FUNC
     pv.rotateAll('X', 1.57)
