@@ -21,26 +21,29 @@
 # Modified:
 #   * October 17, 2016 - name changed to blended.py, all in place except predictor and controller
 #   * October 25, 2016 - input responsive blending, mode 2
+#   * March 10, 2017 - added logging info msgs
+#   *
 #
 ##########################################################################################
 
-from excavator import *
+import excavator as exc
 import socket
 import time
-from sg_model_1101 import sg_model
+# from sg_model_1101 import sg_model
 from trajectories import *
 from PID import PID
+import logging
 
+# LOG
+logging.basicConfig(filename='blended_mvn.log',level=logging.DEBUG)
 
 ## I/O
 # Initialize PWM/servo classes and measurement classes, note: this zeros the encoder
-temp = exc_setup()
-actuators = temp[0]
-measurements = temp[1]
+actuators, measurements = exc.exc_setup()
 
 ## PREDICTION
 # Initialize gaussian predictor
-gp = GaussianPredictor(filename='gmm_model_exp.pkl')
+gp = exc.GaussianPredictor(filename='gmm_model_exp.pkl')
 
 ## CONTROLLERS
 # PI Controllers for each actuator
@@ -69,7 +72,7 @@ if filename == '':
     print('No data storage selected')
 else:
     print('Writing headers to: ' + filename)
-    data = DataLogger(4, filename)
+    data = exc.DataLogger(4, filename)
 
 start = time.time()
 
@@ -82,6 +85,7 @@ try:
 
     while True:
         loop_start = time.time()
+        logging.info('Time: %f' % loop_start)
 
         # Start by updating measurements
         for m in measurements:
@@ -89,15 +93,20 @@ try:
 
         # Parse data (and apply joystick deadzone)
         try:
-            received_parsed = parse_joystick(sock.recv(4096), received_parsed)
+            received_parsed = exc.parse_joystick(sock.recv(4096), received_parsed)
         except ValueError:
             pass
+        
+        logging.info('Joysticks: %s' % received_parsed)
 
         state = np.array([m.value for m in measurements])
         action = np.array([received_parsed[a.js_index] for a in actuators])
 
         # Update prediction
         gp.update(state, action)
+        
+        logging.info('Subgoal Probability: %s' % gp.subgoal_probability)
+        logging.info('Subgoal: %i, with alpha: %f' % (gp.subgoal, gp.alpha))
 
         # If active and new
         if (gp.alpha > 0) and (gp.last_suspected != gp.subgoal):
@@ -105,6 +114,7 @@ try:
                 c.setIntegrator(0)
                 c.setDerivator(0)
                 c.setPoint(gp.get_target_sg_pos()[i])
+                logging.info('New setpoint.')
 
         gp.last_suspected = gp.subgoal
 
@@ -145,8 +155,9 @@ try:
         #     # alpha = predictor.alpha
 
         # Apply blending law, set duty, and update servo
-        for a, c, m in zip(actuators, controllers, measurements):
-            u = blending_law(action, c.update_sat(state), gp.alpha, a.offset)
+        for i, (a, c, m) in enumerate(zip(actuators, controllers, measurements)):
+            u = exc.blending_law(action[i], c.update_sat(state[i]), gp.alpha, a.offset)
+            logging.info('Normalized input: %f' % u)
             # print a.actuator_name
             # print c.PID_sat
             # print received_parsed[a.js_index]
@@ -166,10 +177,13 @@ try:
         except NameError:
             pass
 
+        while (time.time() - loop_start) < 0.05:
+            pass
+
 except KeyboardInterrupt:
     print '\nQuitting'
 finally:
-    homing(actuators, measurements, controllers, [10, 10, 2, 0], [0.3, 0.3, 0.3, 0.05], 10)
+    # homing(actuators, measurements, controllers, [10, 10, 2, 0], [0.3, 0.3, 0.3, 0.05], 10)
     print '\nClosing PWM signals...'
     sock.close()
     for a in actuators:
@@ -179,7 +193,4 @@ finally:
     for a in actuators:
         a.close_servo()
     if 'data' in locals():
-        notes = raw_input('Notes about this trial: ')
-        n = open('data/metadata.csv', 'a')
-        n.write('\n' + filename + ',' + notes)
-        n.close()
+        data.close()
