@@ -5,7 +5,8 @@
 #
 # This library provides methods and classes for excavator control
 #
-# NOTE: created from manual.py and manual_factored.py
+# NOTE: Forked from excavator.py in ../tests/
+#       This is a dev environment for MBP, only differs with imports and logging
 #
 # Created: October 11, 2016
 #   - Mitchell Allain
@@ -18,6 +19,7 @@
 #   * October 24, 2016 - Added homing routine
 #   * February 17, 2017 - Cleanup and packaging
 #   * March 07, 2017 - Added Predictor and GaussianPredictor class
+#   * March 12, 2017 - added try/except for BBB imports, and logging
 #   *
 #
 ##########################################################################################
@@ -31,9 +33,14 @@ except ImportError:
 import numpy as np
 import time
 import pickle
-from scipy.stats import mvn
+from scipy.stats import mvn, multivariate_normal
 # import datetime
 # import os
+import logging
+import math
+
+
+logging.basicConfig(filename='exc.log', level=logging.DEBUG)
 
 
 class Servo():
@@ -196,36 +203,58 @@ class DataLogger():
 class GaussianPredictor():
     '''Abstract class for predictors, subclass and implement an update method
 
+    NOTE: Subgoal numbering now indexes from zero
+
     Args:
         subgoal_dists (np.array): list of k distributions of m variables
 
     Attributes:
-        last_confirmed (int): index of last known subgoal in subgoal_dists
+        last_confirmed (int): index of last subgoal from check_if_terminated()
+        last_suspected (int): last subgoal to activate blending
+        subgoal (int): current subgoal
+        likelihood (np.array): k-length array of action likelihoods
+        subgoal_probability (np.array): k-length array of posterior probabilities
         alpha (float): blending parameter
+        alpha_threshold (float): threshold to activate blending
+        means (np.array): k x m array of subgoal means
+        covs (np.array): k x m x m array of subgoal covariances
+        trans (np.array): k x k stochastic transition matrix
+        kdim (np.array): number of subgoals inferred from the above vars
 
     Methods:
-        get_alpha(): return self.alpha
         update(): maps the values of subgoal_probability to a blending parameter value
+        get_target_sg_pos(): returns location of current subgoal
+        check_if_terminated(): checks if current state is within subgoal dist
+                               with confidence over threshold
     '''
     def __init__(self, filename='gmm_model_exp.pkl'):
         self.last_confirmed = -1
         self.last_suspected = -1
         self.subgoal = -1
         self.alpha = 0
-        self.subgoal_probability = np.zeros(6)
         self.alpha_threshold = 0.7
         # Model params
         with open(filename, 'rb') as openfile:
             tmp = pickle.load(openfile)
             self.means = tmp['means']
             self.covs = tmp['covs']
+            self.trans = tmp['trans']
+        self.kdim = len(self.means)
+        self.subgoal_probability = np.zeros(self.kdim)
 
     def update(self, state, action):
-        self.subgoal_probability = get_mvn_action_likelihood_marginal(state, action, self.means, self.covs)[0]
+        self.check_if_terminated(state)
+        self.likelihood = get_mvn_action_likelihood_marginal_mvndst(state, action, self.means, self.covs)[0]
+
+        # Apply transition vector corresponding to last confirmed sg
+        self.subgoal_probability = self.trans[:, self.last_confirmed] * self.likelihood
+
+        # Normalize posterior
         self.subgoal_probability /= np.sum(self.subgoal_probability)
-        max_ll = np.max(self.subgoal_probability)
-        if (max_ll > self.alpha_threshold):
-            self.alpha = lin_map(max_ll, 0.7, 1, 0.3, 0.6)
+
+        MAP = np.max(self.subgoal_probability)
+        if (MAP > self.alpha_threshold):
+            self.alpha = lin_map(MAP, self.alpha_threshold, 1, 0.3, 0.6)
             self.subgoal = np.argmax(self.subgoal_probability)
         else:
             self.alpha = 0
@@ -233,11 +262,88 @@ class GaussianPredictor():
     def get_target_sg_pos(self):
         return self.means[self.subgoal]
 
-    def check_if_terminated(self, state, threshold=0.8):
+    def check_if_terminated(self, state, threshold=0.6):
         ''' See if state is within termination region, assign last subgoal'''
-        termination_probability = np.array([sg.pdf(state) for sg in self.subgoal_dists])
+        termination_probability = np.array([multivariate_normal(self.means[i], self.covs[i]).pdf(state) for i in xrange(self.kdim)])
         if (termination_probability > threshold).any():
-            self.last_confirmed = np.argmax(termination_probability) + 1
+            self.last_confirmed = np.argmax(termination_probability)
+
+
+def get_mvn_action_likelihood_marginal_mvndst(states, actions, means, covs):
+    ''' Rewriting the original multivariate action likelihood to marginalize out inactive vars
+        uses Alan Genz's multivariate normal Fortran function 'mvndst' in Scipy
+
+    Args:
+        states (np.array): m-length state or n x m array of states
+        actions (np.array): m-length action or n x m array of actions
+        means (np.array): k x m array of means for k subgoals
+        covs (np.array): k x m x m array of m covariance matrices for k subgoals
+
+    Returns:
+        action_likelihoods (np.array): n x k array of likelihoods for each subgoal for n states
+
+    TODO:
+        marginalize inactive variables by dropping covariances instead of computing whole domain
+    '''
+
+    if states.shape != actions.shape:
+        raise ValueError('state and action args must have equal dimension.')
+
+    elif states.ndim == 1:
+        states = np.expand_dims(states, axis=0)
+        actions = np.expand_dims(actions, axis=0)
+
+    action_likelihoods = np.zeros((states.shape[0], means.shape[0]))
+    indicator = np.zeros(action_likelihoods.shape)
+
+    # For state, action pair index i
+    for i in xrange(states.shape[0]):
+        # Find active axes and skip if null input
+        active = np.where(actions[i] != 0)[0]
+        if active.size == 0:
+            break
+
+        # Else, compute mvn pdf integration for each subgoal
+        # Bounds are shifted so that dist is zero mean
+        for g in xrange(means.shape[0]):
+            low = np.copy(states[i] - means[g])
+            upp = np.copy(states[i] - means[g])
+            infin = np.zeros(actions.shape[1])
+
+            # Iterate through active indices and set low and upper bounds of ATD action-targeted domain
+            # infin is an integer code used by func mvndst.f
+            for j in xrange(actions.shape[1]):
+                if actions[i, j] < 0:  # Negative action
+                    infin[j] = 0
+                elif actions[i, j] > 0:  # Postive action
+                    infin[j] = 1
+                else:
+                    infin[j] = -1
+
+            # Marginalize out inactive variables by dropping means and covariances
+            corr = pack_covs(covs[g])
+            logging.info('Correlation coeff: %s \n'
+                         'Covariance matrix: %s \n'
+                         'Active: %s' % (corr, covs, active))
+            # pdb.set_trace()
+            _, action_likelihoods[i, g], indicator[i, g] = mvn.mvndst(low, upp, infin, corr)
+
+            if (indicator[i, g] == 1):
+                logging.error('mvn.mvndst() failed with args: \n'
+                              'low: %s \n upp: %s \n'
+                              'infin: %s \n corr: %s \n' % (low, upp, infin, corr))
+    return action_likelihoods
+
+
+def pack_covs(covs):
+    ''' To support Alan Genz's mvndst function; go read the documentation '''
+    d = len(covs)
+    corr = np.zeros((d*(d-1)/2))
+    for i in range(d):
+        for j in range(d):
+            if (i > j):
+                corr[j + (i-2)*(i-1)/2] = covs[i, j]/(math.sqrt(covs[i, i] * covs[j, j]))
+    return corr
 
 
 def get_mvn_action_likelihood_marginal(states, actions, means, covs):
@@ -293,11 +399,13 @@ def get_mvn_action_likelihood_marginal(states, actions, means, covs):
             means_marg = means[g][active]
             covs_marg = covs[g][active][:, active]
             # pdb.set_trace()
-            action_likelihoods[i, g], indicator[i, g] = mvn.mvnun(low, upp, means_marg, covs_marg, maxpts=100000)
+            action_likelihoods[i, g], indicator[i, g] = mvn.mvnun(low, upp, means_marg, covs_marg, maxpts=10000)
 
             if (indicator[i, g] == 1):
-                # print(low, upp, means_marg, covs_marg)
-                print('MVN failed.')
+                logging.error('mvn.mvnun() failed with args: \n'
+                              'low: %s \n upp: %s \n'
+                              'means: %s \n covs: %s \n'
+                              'maxpts: %i' % (low, upp, means_marg, covs_marg, 10000))
     # if (indicator == 1).any():
         # print('mvnun failed: error code 1')
         # print(low, upp, means, covs)
