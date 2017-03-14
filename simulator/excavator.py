@@ -34,13 +34,13 @@ import numpy as np
 import time
 import pickle
 from scipy.stats import mvn, multivariate_normal
-# import datetime
+import datetime
 # import os
 import logging
 import math
 
 
-logging.basicConfig(filename='exc.log', level=logging.DEBUG)
+logging.basicConfig(filename='exc.log', level=logging.INFO)
 
 
 class Servo():
@@ -176,7 +176,7 @@ class DataLogger():
             self.file.write('Time,Boom Cmd,Stick Cmd,Bucket Cmd,Swing Cmd,'
                             'Boom Ctrl,Stick Ctrl,Bucket Ctrl,Swing Ctrl,'
                             'Boom Blended,Stick Blended,Bucket Blended,Swing Blended,'
-                            'Boom Ms,Stick Ms,Bucket Ms,Swing Ms,Class,Confidence,\n')
+                            'Boom Ms,Stick Ms,Bucket Ms,Swing Ms,Class,Confidence\n')
 
         elif self.mode == 4:   # Blended mvn mode (Commands, Controllers, Blended, Measurements, Likelihoods, Subgoal, Alpha)
             num_of_sgs = 6
@@ -186,7 +186,7 @@ class DataLogger():
                             'Boom Blended,Stick Blended,Bucket Blended,Swing Blended,'
                             'Boom Ms,Stick Ms,Bucket Ms,Swing Ms,' +
                             sg_header +
-                            ',Class,Confidence,\n')
+                            ',Subgoal,Alpha\n')
 
     def log(self, data_listed):
         self.file.write(','.join(map(str, data_listed))+'\n')
@@ -195,7 +195,7 @@ class DataLogger():
         ''' Close is coupled to metadata creation to *encourage* trial notes '''
         notes = raw_input('Notes about this trial: ')
         n = open('data/metadata.csv', 'a')
-        n.write(self.filename + ',' + notes)
+        n.write(self.filename + ',' + notes + '\n')
         n.close()
         self.file.close()
 
@@ -239,22 +239,25 @@ class GaussianPredictor():
             self.means = tmp['means']
             self.covs = tmp['covs']
             self.trans = tmp['trans']
+            # self.trans = np.ones((6, 6))
+            self.queues = tmp['queues']
         self.kdim = len(self.means)
         self.subgoal_probability = np.zeros(self.kdim)
 
     def update(self, state, action):
-        self.check_if_terminated(state)
-        self.likelihood = get_mvn_action_likelihood_marginal_mvndst(state, action, self.means, self.covs)[0]
+        self.check_if_terminated_update_stats(state, action)
+        self.likelihood = get_mvn_action_likelihood_marginal(state, action, self.means, self.covs)[0]
 
         # Apply transition vector corresponding to last confirmed sg
         self.subgoal_probability = self.trans[:, self.last_confirmed] * self.likelihood
 
         # Normalize posterior
-        self.subgoal_probability /= np.sum(self.subgoal_probability)
+        self.subgoal_probability = np.nan_to_num(self.subgoal_probability / np.sum(self.subgoal_probability))
+        # self.subgoal_probability = np.nan_to_num(self.subgoal_probability)
 
         MAP = np.max(self.subgoal_probability)
         if (MAP > self.alpha_threshold):
-            self.alpha = lin_map(MAP, self.alpha_threshold, 1, 0.3, 0.6)
+            self.alpha = lin_map(MAP, self.alpha_threshold, 1, 0.1, 0.4)
             self.subgoal = np.argmax(self.subgoal_probability)
         else:
             self.alpha = 0
@@ -262,11 +265,46 @@ class GaussianPredictor():
     def get_target_sg_pos(self):
         return self.means[self.subgoal]
 
-    def check_if_terminated(self, state, threshold=0.6):
+    def check_if_terminated(self, state, threshold=0.001):
         ''' See if state is within termination region, assign last subgoal'''
         termination_probability = np.array([multivariate_normal(self.means[i], self.covs[i]).pdf(state) for i in xrange(self.kdim)])
         if (termination_probability > threshold).any():
             self.last_confirmed = np.argmax(termination_probability)
+
+    def check_if_terminated_update_stats(self, state, action, threshold=0.001):
+        ''' Checks if we are in a subgoal, which is defined as being within a
+            (NEW) subgoal distribution (VALID), and having zero velocity (STILL)
+
+            If all three conditions True, then add to queue and recompute stats
+            Can suppress self.update_stats() for static distributions
+
+            Todo: revise these conditions (is zero velocity appropriate?)
+            '''
+        termination_probability = np.array([multivariate_normal(self.means[i], self.covs[i]).pdf(state) for i in xrange(self.kdim)])
+        NEW = (np.argmax(termination_probability) != self.last_confirmed)
+        VALID = (termination_probability > threshold).any()
+        STILL = (action == 0).all()
+        if VALID and STILL and NEW:
+            # Set last_confirmed to sg index
+            self.last_confirmed = np.argmax(termination_probability)
+            # Add location to corresponding queue
+            self.queues[self.last_confirmed].append(state)
+            self.update_stats()
+            logging.info('Means: %s, Covs: %s' % (self.means, self.covs))
+
+    def update_stats(self):
+        ''' Recalculate stats for last confirmed'''
+        self.means[self.last_confirmed] = np.mean(self.queues[self.last_confirmed], axis=0)
+        self.covs[self.last_confirmed] = np.cov(np.array(self.queues[self.last_confirmed]).T)
+
+# class SlidingStats():
+#     ''' A class to update the mvn stats for task subgoals
+
+#     Args:
+#         means (np.array): k x m subgoal means
+#         covs (np.array):
+#          '''
+#     def __init__(self, means, covs, n)
 
 
 def get_mvn_action_likelihood_marginal_mvndst(states, actions, means, covs):
@@ -322,9 +360,9 @@ def get_mvn_action_likelihood_marginal_mvndst(states, actions, means, covs):
 
             # Marginalize out inactive variables by dropping means and covariances
             corr = pack_covs(covs[g])
-            logging.info('Correlation coeff: %s \n'
-                         'Covariance matrix: %s \n'
-                         'Active: %s' % (corr, covs, active))
+            logging.debug('Correlation coeff: %s \n'
+                          'Covariance matrix: %s \n'
+                          'Active: %s' % (corr, covs, active))
             # pdb.set_trace()
             _, action_likelihoods[i, g], indicator[i, g] = mvn.mvndst(low, upp, infin, corr)
 
@@ -342,8 +380,15 @@ def pack_covs(covs):
     for i in range(d):
         for j in range(d):
             if (i > j):
-                corr[j + (i-2)*(i-1)/2] = covs[i, j]/(math.sqrt(covs[i, i] * covs[j, j]))
+                corr[j + ((i-1) * i) / 2] = covs[i, j]/(math.sqrt(covs[i, i] * covs[j, j]))
     return corr
+
+
+# def cov_to_corr(cov):
+#     corr = np.zeros(cov.shape)
+#     for (i, j), val in [(i, j) for i in range(cov.shape[0]) for j in range(cov.shape[1])]:
+#         corr[i, j] = cov[i, j] / math.sqrt(cov[i, i] * cov[j, j])
+#     return corr
 
 
 def get_mvn_action_likelihood_marginal(states, actions, means, covs):
@@ -574,16 +619,28 @@ def parse_joystick(received, received_parsed):
         raise ValueError
 
 
-def blending_law(operator_input, controller_output, alpha, offset=0):
+def blending_law(operator_input, controller_output, alpha, offset=0, oppose=False):
     '''Blend inputs according to the following law:
 
-        u_b = u + a*(u' - u)
+                    u_b = u + a*(u' - u)
 
-        where u is the operator input, a is the alpha parameter, and u' is the controller output
+        where u is the operator input, a is the alpha parameter,
+        and u' is the controller output
 
-        add offset to eliminate deadband
+        Args:
+            operator_input (float)
+            controller_output (float)
+            alpha (float): alpha parameter
+            offset (float): eliminate deadband, maps output [0, 1] to [offset, 1]
+            oppose (bool): if True, allow assistance to oppose operator
+
+        Returns:
+            blended output ub (mapped to offset)
     '''
-    ub = operator_input + alpha*(controller_output - operator_input)
+    if (not oppose) and (np.sign(operator_input) != np.sign(controller_output)):
+        ub = operator_input
+    else:
+        ub = operator_input + alpha * (controller_output - operator_input)
     return (1 - offset) * ub + np.sign(ub) * offset
 
 
@@ -593,11 +650,11 @@ def lin_map(x, a, b, u, v):
     return (x - a) * ((v - u) / (b - a)) + u
 
 
-# def name_date_time(file_name):
-#     '''Returns string of format __file__ + '_mmdd_hhmm.csv' '''
-#     n = datetime.datetime.now()
-#     data_stamp = os.path.basename(file_name)[:-3] + '_' + n.strftime('%m%d_%H%M')+'.csv'
-#     return data_stamp
+def name_date_time(file_name):
+    '''Returns string of format file_name + '_mmdd_hhmm.csv' '''
+    n = datetime.datetime.now()
+    file_with_timestamp = file_name + n.strftime('_%m%d_%H%M')+'.csv'
+    return file_with_timestamp
 
 
 def exc_setup():

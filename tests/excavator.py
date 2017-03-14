@@ -234,18 +234,21 @@ class GaussianPredictor():
             self.means = tmp['means']
             self.covs = tmp['covs']
             self.trans = tmp['trans']
+            # self.trans = np.ones((6, 6))
+            self.queus = tmp['queues']
         self.kdim = len(self.means)
         self.subgoal_probability = np.zeros(self.kdim)
 
     def update(self, state, action):
-        self.check_if_terminated(state)
-        self.likelihood = get_mvn_action_likelihood_marginal_mvndst(state, action, self.means, self.covs)[0]
+        self.check_if_terminated_update_stats(state, action)
+        self.likelihood = get_mvn_action_likelihood_marginal(state, action, self.means, self.covs)[0]
 
         # Apply transition vector corresponding to last confirmed sg
         self.subgoal_probability = self.trans[:, self.last_confirmed] * self.likelihood
 
         # Normalize posterior
-        self.subgoal_probability /= np.sum(self.subgoal_probability)
+        self.subgoal_probability = np.nan_to_num(self.subgoal_probability / np.sum(self.subgoal_probability))
+        # self.subgoal_probability = np.nan_to_num(self.subgoal_probability)
 
         MAP = np.max(self.subgoal_probability)
         if (MAP > self.alpha_threshold):
@@ -262,6 +265,31 @@ class GaussianPredictor():
         termination_probability = np.array([multivariate_normal(self.means[i], self.covs[i]).pdf(state) for i in xrange(self.kdim)])
         if (termination_probability > threshold).any():
             self.last_confirmed = np.argmax(termination_probability)
+
+    def check_if_terminated_update_stats(self, state, action, threshold=0.001):
+        ''' Checks if we are in a subgoal, which is defined as being within a
+            (NEW) subgoal distribution (VALID), and having zero velocity (STILL)
+
+            If all three conditions True, then add to queue and recompute stats
+            Can suppress self.update_stats() for static distributions
+
+            Todo: revise these conditions (is zero velocity appropriate?)
+            '''
+        termination_probability = np.array([multivariate_normal(self.means[i], self.covs[i]).pdf(state) for i in xrange(self.kdim)])
+        NEW = (np.argmax(termination_probability) != self.last_confirmed)
+        VALID = (termination_probability > threshold).any()
+        STILL = (action == 0).all()
+        if VALID and STILL and NEW:
+            # Set last_confirmed to sg index
+            self.last_confirmed = np.argmax(termination_probability)
+            # Add location to corresponding queue
+            self.queues[self.last_confirmed].append(state)
+            self.update_stats()
+
+    def update_stats(self):
+        ''' Recalculate stats for last confirmed'''
+        self.means[self.last_confirmed] = np.mean(self.queues[self.last_confirmed], axis=0)
+        self.covs[self.last_confirmed] = np.cov(np.array(self.queues[self.last_confirmed]).T)
 
 
 def get_mvn_action_likelihood_marginal_mvndst(states, actions, means, covs):
@@ -337,8 +365,15 @@ def pack_covs(covs):
     for i in range(d):
         for j in range(d):
             if (i > j):
-                corr[j + (i-2)*(i-1)/2] = covs[i, j]/(math.sqrt(covs[i, i] * covs[j, j]))
+                corr[j + ((i-1) * i) / 2] = covs[i, j]/(math.sqrt(covs[i, i] * covs[j, j]))
     return corr
+
+
+# def cov_to_corr(cov):
+#     corr = np.zeros(cov.shape)
+#     for (i, j), val in [(i, j) for i in range(cov.shape[0]) for j in range(cov.shape[1])]:
+#         corr[i, j] = cov[i, j] / math.sqrt(cov[i, i] * cov[j, j])
+#     return corr
 
 
 def get_mvn_action_likelihood_marginal(states, actions, means, covs):
@@ -566,16 +601,28 @@ def parse_joystick(received, received_parsed):
         raise ValueError
 
 
-def blending_law(operator_input, controller_output, alpha, offset=0):
+def blending_law(operator_input, controller_output, alpha, offset=0, oppose=False):
     '''Blend inputs according to the following law:
 
-        u_b = u + a*(u' - u)
+                    u_b = u + a*(u' - u)
 
-        where u is the operator input, a is the alpha parameter, and u' is the controller output
+        where u is the operator input, a is the alpha parameter,
+        and u' is the controller output
 
-        add offset to eliminate deadband
+        Args:
+            operator_input (float)
+            controller_output (float)
+            alpha (float): alpha parameter
+            offset (float): eliminate deadband, maps output [0, 1] to [offset, 1]
+            oppose (bool): if True, allow assistance to oppose operator
+
+        Returns:
+            blended output ub (mapped to offset)
     '''
-    ub = operator_input + alpha*(controller_output - operator_input)
+    if (not oppose) and (np.sign(operator_input) != np.sign(controller_output)):
+        ub = operator_input
+    else:
+        ub = operator_input + alpha * (controller_output - operator_input)
     return (1 - offset) * ub + np.sign(ub) * offset
 
 
