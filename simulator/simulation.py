@@ -14,7 +14,7 @@
 #
 # Modified:
 #   * March 10, 2017 -  refactored simtools.py to better utilize excavator.py
-#   *                   also, 
+#   *                   also,
 #
 ##########################################################################################
 
@@ -24,6 +24,7 @@ import pdb
 import numpy as np
 import pickle
 import time
+import sys
 
 
 # key_to_function = {
@@ -62,7 +63,6 @@ class ProjectionViewer:
 
     def addWireframe(self, name, wireframe):
         """ Add a named wireframe object. """
-
         self.wireframes[name] = wireframe
 
     def run(self):
@@ -88,16 +88,19 @@ class ProjectionViewer:
             self.display()
             # render text
             # print(self.wireframes['exc'].predictor.subgoal)
-            self.subgoal_label = self.myfont.render("Likelihood: %s" % ['%.2f' % elem for elem in self.wireframes['exc'].gp.subgoal_probability.tolist()], 1, (200, 200, 200))
-            self.screen.blit(self.subgoal_label, (20, 20))
-            self.subgoal_label = self.myfont.render("Subgoal: %i, Ll: %.2f, Alpha: %.2f" % (np.argmax(self.wireframes['exc'].gp.subgoal_probability) + 1,
-                                                                                            np.max(self.wireframes['exc'].gp.subgoal_probability),
-                                                                                            self.wireframes['exc'].gp.alpha), 1, (200, 200, 200))
-            self.screen.blit(self.subgoal_label, (20, 60))
-            self.state_label = self.myfont.render("Perturbation: %s" % ['%.2f' % elem for elem in self.wireframes['exc'].perturb.tolist()], 1, (200, 200, 200))
-            self.screen.blit(self.state_label, (20, 100))
-            # self.state_label = self.myfont.render("Command: %s" % ['%.2f' % elem for elem in self.wireframes['exc'].perturb.tolist()], 1, (200, 200, 200))
-            # self.screen.blit(self.state_label, (20, 140))
+            self.label = self.myfont.render("Likelihood: %s" % ['%.2f' % elem for elem in self.wireframes['exc'].gp.subgoal_probability.tolist()], 1, (200, 200, 200))
+            self.screen.blit(self.label, (20, 20))
+            self.label = self.myfont.render("Subgoal: %i, Ll: %.2f, Alpha: %.2f" % (np.argmax(self.wireframes['exc'].gp.subgoal_probability),
+                                                                                    np.max(self.wireframes['exc'].gp.subgoal_probability),
+                                                                                    self.wireframes['exc'].gp.alpha), 1, (200, 200, 200))
+            self.screen.blit(self.label, (20, 60))
+            self.label = self.myfont.render("Perturbation: %s" % ['%.2f' % elem for elem in self.wireframes['exc'].perturb.tolist()], 1, (200, 200, 200))
+            self.screen.blit(self.label, (20, 100))
+            self.label = self.myfont.render("Operator: %s LC: %i" %
+                                            (['%.2f' % elem for elem in self.wireframes['exc'].js.tolist()],
+                                             self.wireframes['exc'].gp.last_confirmed),
+                                            1, (200, 200, 200))
+            self.screen.blit(self.label, (20, 140))
             pygame.display.flip()
 
     def update(self):  # read joysticks and apply to excavator
@@ -147,6 +150,12 @@ class ProjectionViewer:
 
 
 if __name__ == '__main__':
+    if (len(sys.argv) == 2):
+        if (sys.argv[1] == 'log'):
+            log = True
+    else:
+        log = False
+
     pv = ProjectionViewer(800, 600)
 
     print('Initializing pygame module and joysticks...\n')
@@ -168,8 +177,8 @@ if __name__ == '__main__':
             break
     print('Right joystick detected.')
 
-    # Excavator wireframe
-    exc = simtools.ExcWireframe(js1, js2, order, log=False)
+    # Excavator wireframe, log option from CLI
+    exc = simtools.ExcWireframe(js1, js2, order, log=log)
     pv.addWireframe('exc', exc)
 
     # Truck wireframe
@@ -202,4 +211,4 @@ if __name__ == '__main__':
 
     # Shut her down.
     if pv.wireframes['exc'].log:
-        pv.wireframes['exc'].logger.close()
+        pv.wireframes['exc'].dl.close()
