@@ -137,7 +137,7 @@ class ExcWireframe(Wireframe):
 
         # Initialize logger if log=True
         if log:
-            self.logger = exc.DataLogger(1, open(create_filename('sim'), 'w'))
+            self.dl = exc.DataLogger(4, exc.name_date_time('sim'))
 
         self.gp = exc.GaussianPredictor()
 
@@ -147,9 +147,10 @@ class ExcWireframe(Wireframe):
         bucket_PI = PID(1, 0.1, 0, 0, 0, 4, -4)
         swing_PI = PID(10, 0.1, 0, 0, 0, 4, -4)
         self.controllers = [boom_PI, stick_PI, bucket_PI, swing_PI]
+        self.command = np.zeros((4))
 
     def forward_euler(self, dt):
-        self.state = np.clip(self.state + self.vels*dt, [0, 0, 0, 0.3], [11.8, 12.8, 10.9, 1.2])  # update these
+        self.state = np.clip(self.state + self.vels*dt, [0, 0, 0, 0], [11.8, 12.8, 10.9, 1.7])  # update these
 
     def forward_kin(self):
         t1 = self.state[3]
@@ -219,17 +220,23 @@ class ExcWireframe(Wireframe):
 
         self.blending()
 
-        # Log new input old state
-        if self.log:
-            self.logger.log([time.time() - self.abs_start] + self.vels.tolist() + self.state.tolist())
-
         # Forward Euler with actuator states, then kinematics for new pose
         self.forward_euler(time.time() - self.loop_start)
         self.loop_start = time.time()
         self.forward_kin()
 
+        if self.log:
+            # Log with DataLogger()
+            self.dl.log([time.time() - self.abs_start] + self.js.tolist() +
+                        self.pid.tolist() + self.command.tolist() +
+                        self.state.tolist() + self.gp.subgoal_probability.tolist() +
+                        [self.gp.subgoal, self.gp.alpha])
+
         # Fix orientation
         self.__orient()
+
+        while (time.time() - self.loop_start) < 0.02:
+            pass
 
     def get_joysticks(self):
         js_input = np.array([self.js1.get_axis(0), self.js1.get_axis(1), self.js2.get_axis(0), self.js2.get_axis(1)])
@@ -251,13 +258,13 @@ class ExcWireframe(Wireframe):
         self.gp.last_suspected = self.gp.subgoal
 
     def blending(self):
-        pid = np.zeros((4))
+        self.pid = np.zeros((4))
         for i, c in enumerate(self.controllers):
-            pid[i] = c.update_sat(self.state[i])
-            self.command = exc.blending_law(self.js[i], pid[i], self.gp.alpha)
-            # Scale to velocity
-            self.vels = self.command * np.array([2, 2, 2, 1])
-        self.perturb = self.gp.alpha * (pid - self.js)
+            self.pid[i] = c.update_sat(self.state[i])
+            self.command[i] = exc.blending_law(self.js[i], self.pid[i], self.gp.alpha)
+        # Scale to velocity
+        self.vels = self.command * np.array([2, 2, 2, 1])
+        self.perturb = self.gp.alpha * (self.pid - self.js)
 
     def __orient(self):
         self.rotateX((0, 0, 0), 1.57)
