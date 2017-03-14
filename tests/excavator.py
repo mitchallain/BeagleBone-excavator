@@ -240,7 +240,7 @@ class GaussianPredictor():
         self.subgoal_probability = np.zeros(self.kdim)
 
     def update(self, state, action):
-        self.check_if_terminated_update_stats(state, action)
+        self.check_if_terminated(state)
         self.likelihood = get_mvn_action_likelihood_marginal(state, action, self.means, self.covs)[0]
 
         # Apply transition vector corresponding to last confirmed sg
@@ -601,7 +601,7 @@ def parse_joystick(received, received_parsed):
         raise ValueError
 
 
-def blending_law(operator_input, controller_output, alpha, offset=0, oppose=False):
+def blending_law(operator_input, controller_output, alpha, index=0, offset=0, oppose=False, swing=False):
     '''Blend inputs according to the following law:
 
                     u_b = u + a*(u' - u)
@@ -613,13 +613,16 @@ def blending_law(operator_input, controller_output, alpha, offset=0, oppose=Fals
             operator_input (float)
             controller_output (float)
             alpha (float): alpha parameter
+            index (int): actuator index
             offset (float): eliminate deadband, maps output [0, 1] to [offset, 1]
             oppose (bool): if True, allow assistance to oppose operator
 
         Returns:
             blended output ub (mapped to offset)
     '''
-    if (not oppose) and (np.sign(operator_input) != np.sign(controller_output)):
+    if (not oppose) and (np.sign(operator_input) * np.sign(controller_output) == -1):
+        ub = operator_input
+    elif (not swing) and (index == 3):
         ub = operator_input
     else:
         ub = operator_input + alpha * (controller_output - operator_input)
