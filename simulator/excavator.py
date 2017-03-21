@@ -39,8 +39,8 @@ import datetime
 import logging
 import math
 
-
-logging.basicConfig(filename='exc.log', level=logging.INFO)
+logname = 'logs/exc' + datetime.datetime.now().strftime('_%m%d_%H%M') + '.log'
+logging.basicConfig(filename=logname, level=logging.DEBUG)
 
 
 class Servo():
@@ -228,6 +228,7 @@ class GaussianPredictor():
                                with confidence over threshold
     '''
     def __init__(self, filename='gmm_model_exp.pkl'):
+        self.sg_list = []
         self.last_confirmed = -1
         self.last_suspected = -1
         self.subgoal = -1
@@ -257,7 +258,9 @@ class GaussianPredictor():
 
         MAP = np.max(self.subgoal_probability)
         if (MAP > self.alpha_threshold):
-            self.alpha = lin_map(MAP, self.alpha_threshold, 1, 0.1, 0.4)
+            self.alpha = lin_map(MAP, self.alpha_threshold, 1, 0, 0.8)
+            if self.alpha > 1:
+                logging.debug('Alpha: %.3f, MAP: %.3f' % (self.alpha, MAP))
             self.subgoal = np.argmax(self.subgoal_probability)
         else:
             self.alpha = 0
@@ -289,13 +292,16 @@ class GaussianPredictor():
             self.last_confirmed = np.argmax(termination_probability)
             # Add location to corresponding queue
             self.queues[self.last_confirmed].append(state)
+            logging.debug('Confirmed: %i \n Updated queue: %s' % (self.last_confirmed, self.queues[self.last_confirmed]))
             self.update_stats()
-            logging.info('Means: %s, Covs: %s' % (self.means, self.covs))
 
     def update_stats(self):
         ''' Recalculate stats for last confirmed'''
         self.means[self.last_confirmed] = np.mean(self.queues[self.last_confirmed], axis=0)
         self.covs[self.last_confirmed] = np.cov(np.array(self.queues[self.last_confirmed]).T)
+        logging.debug('Update mean: %s \n Update covs: %s' % (self.means[self.last_confirmed],
+                                                              self.covs[self.last_confirmed]))
+        self.sg_list.append((np.copy(self.means), np.copy(self.covs)))
 
 # class SlidingStats():
 #     ''' A class to update the mvn stats for task subgoals
@@ -444,7 +450,7 @@ def get_mvn_action_likelihood_marginal(states, actions, means, covs):
             means_marg = means[g][active]
             covs_marg = covs[g][active][:, active]
             # pdb.set_trace()
-            action_likelihoods[i, g], indicator[i, g] = mvn.mvnun(low, upp, means_marg, covs_marg, maxpts=10000)
+            action_likelihoods[i, g], indicator[i, g] = mvn.mvnun(low, upp, means_marg, covs_marg, abseps=0.01)
 
             if (indicator[i, g] == 1):
                 logging.error('mvn.mvnun() failed with args: \n'
@@ -619,7 +625,7 @@ def parse_joystick(received, received_parsed):
         raise ValueError
 
 
-def blending_law(operator_input, controller_output, alpha, offset=0, oppose=False):
+def blending_law(operator_input, controller_output, alpha, index=0, offset=0, oppose=False, swing=False):
     '''Blend inputs according to the following law:
 
                     u_b = u + a*(u' - u)
@@ -631,13 +637,17 @@ def blending_law(operator_input, controller_output, alpha, offset=0, oppose=Fals
             operator_input (float)
             controller_output (float)
             alpha (float): alpha parameter
+            index (int): actuator index
             offset (float): eliminate deadband, maps output [0, 1] to [offset, 1]
             oppose (bool): if True, allow assistance to oppose operator
 
         Returns:
             blended output ub (mapped to offset)
     '''
-    if (not oppose) and (np.sign(operator_input) != np.sign(controller_output)):
+    if (not oppose) and (np.sign(operator_input) * np.sign(controller_output) == -1):
+        ub = operator_input
+        logging.debug('Opposed: Index %i' % index)
+    elif (not swing) and (index == 3):
         ub = operator_input
     else:
         ub = operator_input + alpha * (controller_output - operator_input)
