@@ -19,7 +19,7 @@
 from excavator import *
 # import pickle
 
-f = open('data/sg_data_1101.csv', 'wb')
+f = open('data/demo_sgs.csv', 'wb')
 points = []
 measurements = measurement_setup()
 count = 1
