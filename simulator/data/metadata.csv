@@ -1,0 +1,11 @@
+sim_data.csv,testsim_0312_1430.csv,another testsim_0312_1529.csv,ok, but will repeatsim_0312_2124.csv,dynamic subgoals 1sim_0312_2214.csv,nahsim_0313_1626.csv,normalized with transition matrix static stats
+sim_0313_1631.csv,normalized without transition matrix
+sim_0313_1735.csv,NWTM much better with modified subgoal pdf threshold
+sim_0313_1740.csv,NWOTM not much assistance here
+sim_0313_1744.csv,UWTM very comfortable good active ratio
+sim_0313_1913.csv,UWOTMcomfortable, no real conflicts, some noticeable assistance
+sim_0313_2153.csv,test discard
+sim_0314_0113.csv,some missed subgoals but really pushing the limits of what I can run on the simulator - using UWTM
+sim_0314_1338.csv,NWTM perturbations seem not strong enough
+sim_0314_1442.csv,testing for strange alpha params
+sim_0314_1447.csv,changed alpha mapping range
