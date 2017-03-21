@@ -262,7 +262,7 @@ def bnirl_sampling(states, partitions, primitives, verbose=False, debug=False, e
         # Draw new subgoal uniformly from demo states
         new_sg = states[np.random.randint(0, dim)]
         crp = eta / float(dim - 1 + eta)
-        act_likelihood = np.e**(np.linalg.norm(primitives - rational_actor_new(new_sg, state)))
+        act_likelihood = np.e**(np.linalg.norm(primitives - rational_action_primitive(new_sg, state)))
 #         act_likelihood = 1
         part_posterior.append(crp*act_likelihood)
 
@@ -328,7 +328,7 @@ def bnirl_sampling_2(states, partitions, primitives, subgoals=dict(), verbose=Fa
         # Draw new subgoal uniformly from demo states
         new_sg = states[np.random.randint(0, dim)]
         crp = eta / float(dim - 1 + eta)
-        act_likelihood = np.e**(np.linalg.norm(primitives - rational_actor_new(new_sg, state)))
+        act_likelihood = np.e**(np.linalg.norm(primitives - rational_action_primitive(new_sg, state)))
 #         act_likelihood = 1
         part_posterior.append(crp*act_likelihood)
 
@@ -395,7 +395,7 @@ def bnirl_sampling_3(states, partitions, primitives, verbose=False, debug=False,
         # Draw new subgoal uniformly from demo states
         new_sg_label = np.random.randint(0, dim)
         crp = eta / float(dim - 1 + eta)
-        act_likelihood = np.e**(np.linalg.norm(primitives - rational_actor_new(states[new_sg_label], state)))
+        act_likelihood = np.e**(np.linalg.norm(primitives - rational_action_primitive(states[new_sg_label], state)))
         part_posterior.append(crp*act_likelihood)
 
         # Normalize the posterior
