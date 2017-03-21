@@ -261,10 +261,10 @@ class ExcWireframe(Wireframe):
         self.pid = np.zeros((4))
         for i, c in enumerate(self.controllers):
             self.pid[i] = c.update_sat(self.state[i])
-            self.command[i] = exc.blending_law(self.js[i], self.pid[i], self.gp.alpha)
+            self.command[i] = exc.blending_law(self.js[i], self.pid[i], self.gp.alpha, index=i)
         # Scale to velocity
         self.vels = self.command * np.array([2, 2, 2, 1])
-        self.perturb = self.gp.alpha * (self.pid - self.js)
+        self.perturb = self.gp.alpha * (self.pid - self.js)  # Might be an error here
 
     def __orient(self):
         self.rotateX((0, 0, 0), 1.57)
