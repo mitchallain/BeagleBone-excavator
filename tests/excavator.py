@@ -537,7 +537,7 @@ class TriggerPrediction():
         self.dispatch[self.mode](state, action)
 
     def update_0(self, state, action):
-        ''' Mode 0: only terminates'''
+        ''' Mode 0: only terminates, no active'''
         # Look for a terminating cue
         for sg in self.sg_model:
             # Are we in a termination set?

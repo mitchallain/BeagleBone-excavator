@@ -1,7 +1,7 @@
 #! /usr/bin/env python
 
 ##########################################################################################
-# blended.py
+# blended_old.py
 #
 # Full impementation of blended shared control, with placeholders for future work
 #
@@ -13,6 +13,8 @@
 #
 # Modified:
 #   * October 17, 2016 - name changed to blended.py, all in place except predictor and controller
+#   * April 03, 2017 - changed to blended_old.py, to run new trials for IFAC-based technical brief
+#   *
 #
 ##########################################################################################
 
@@ -33,7 +35,7 @@ actuators = temp[0]
 measurements = temp[1]
 
 # Initialize predictor, mode 0, alpha = 0.5, regen trajectories to start
-predictor = TriggerPrediction(0, sg_model, 0.5)
+predictor = TriggerPrediction(sg_model, 1, 0.5)
 
 # PI Controllers for each actuator
 boom_PI = PID(0.25, 0.02, 0, 0, 0, 2, -2)
@@ -63,7 +65,6 @@ for c in controllers:
     c.setIntegrator(0)
     c.setDerivator(0)
 
-
 try:
     # Connect to server and send data
     sock.bind((HOST, PORT))
@@ -74,9 +75,6 @@ try:
         # Start by updating measurements
         for m in measurements:
             m.update_measurement()
-
-        # # Receive joystick data from the server
-        # received_joysticks = sock.recv(4096)
 
         # Parse data (and apply joystick deadzone)
         try:
@@ -108,20 +106,21 @@ try:
 
         # Apply blending law, alpha will either be static or zero, set duty, and update servo
         for a, c, m in zip(actuators, controllers, measurements):
-            # u = blending_law(received_parsed[a.js_index], c.update(m.value), predictor.alpha*predictor.active)
-            u = blending_law(received_parsed[a.js_index], c.update(m.value), 0)
+            u = blending_law(received_parsed[a.js_index], c.update(m.value),
+                             predictor.alpha*predictor.active)
+
             a.duty_set = a.duty_span * u/(2) + a.duty_mid
             a.update_servo()
 
         # print(active, predictor.subgoal, [a.duty_set for a in actuators])
 
         try:
-            data.log([loop_start-start] +                           # Run-time clock
-                     received_parsed +                              # BM, ST, BK, SW joystick Cmd
-                     [c.set_point for c in controllers] +                 # BM, ST, BK, SW controller outputs
-                     [a.duty_set for a in actuators] +              # BM, ST, BK, SW duty cycle command
-                     [m.value for m in measurements] +              # BM, ST, BK, SW measurements
-                     [predictor.subgoal, predictor.active])                        # Motion primitive and confidence
+            data.log([loop_start-start] +                     # Run-time clock
+                     received_parsed +                        # BM, ST, BK, SW joystick Cmd
+                     [c.set_point for c in controllers] +     # BM, ST, BK, SW controller outputs
+                     [a.duty_set for a in actuators] +        # BM, ST, BK, SW duty cycle command
+                     [m.value for m in measurements] +        # BM, ST, BK, SW measurements
+                     [predictor.subgoal, predictor.active])   # Motion primitive and confidence
         except NameError:
             pass
 
