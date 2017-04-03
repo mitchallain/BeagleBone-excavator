@@ -18,11 +18,11 @@
 #
 ##########################################################################################
 
-from excavator import *
+import excavator as exc
+import trajectories as traj
 import socket
 import time
 from sg_model import sg_model
-from trajectories import *
 from PID import PID
 
 
@@ -30,12 +30,12 @@ from PID import PID
 HOST, PORT = '', 9999
 
 # Initialize PWM/servo classes and measurement classes, note: this zeros the encoder
-temp = exc_setup()
+temp = exc.exc_setup()
 actuators = temp[0]
 measurements = temp[1]
 
 # Initialize predictor, mode 0, alpha = 0.5, regen trajectories to start
-predictor = TriggerPrediction(sg_model, 1, 0.5)
+predictor = exc.TriggerPrediction(sg_model, 1, 0.5)
 
 # PI Controllers for each actuator
 boom_PI = PID(0.25, 0.02, 0, 0, 0, 2, -2)
@@ -53,7 +53,7 @@ if filename == '':
     print('No data storage selected')
 else:
     print('Writing headers to: ' + filename)
-    data = DataLogger(3, filename)
+    data = exc.DataLogger(3, filename)
 
 start = time.time()
 step = 0
@@ -78,7 +78,7 @@ try:
 
         # Parse data (and apply joystick deadzone)
         try:
-            received_parsed = parse_joystick(sock.recv(4096), received_parsed)
+            received_parsed = exc.parse_joystick(sock.recv(4096), received_parsed)
         except ValueError:
             pass
 
@@ -89,16 +89,17 @@ try:
 
         # If active and need new trajectories
         if active and predictor.regen:
-            dt, amax, tf, Dmin, vmax = sine_traj(sg_model[predictor.prev-1]['subgoal_pos'], [(i+0.01) for i in sg_model[sg-1]['subgoal_pos']], [0]*4, [18, 27, 30, 0.9], [10]*4)
+            dt, amax, tf, Dmin, vmax = traj.sine_traj(sg_model[predictor.prev-1]['subgoal_pos'], [(i+0.01) for i in sg_model[sg-1]['subgoal_pos']], [0]*4, [18, 27, 30, 0.9], [10]*4)
             predictor.regen = False
             active_timer = time.time()
             print 'Sine traj: ', dt, amax, tf, Dmin, vmax, predictor.regen, '\n'
 
         # If active and already generated trajectories
         if active:
-            p_d, _, _, _ = sine_func_v([active_timer-time.time()]*4, dt, tf, amax, vmax, sg_model[predictor.prev-1]['subgoal_pos'], [0]*4, [0]*4, sg_model[sg-1]['subgoal_pos'], p_dprev, Dmin)
+            p_d, _, _, _ = traj.sine_func_v([active_timer-time.time()]*4, dt, tf, amax,
+                                       vmax, sg_model[predictor.prev-1]['subgoal_pos'], [0]*4, [0]*4, sg_model[sg-1]['subgoal_pos'], p_dprev, Dmin)
             step = time.time()
-            p_dprev = p_d
+            # p_dprev = p_d
             # Setpoint for controller
             for i, c in enumerate(controllers):
                 c.setPoint(p_d[i])
@@ -106,7 +107,7 @@ try:
 
         # Apply blending law, alpha will either be static or zero, set duty, and update servo
         for a, c, m in zip(actuators, controllers, measurements):
-            u = blending_law(received_parsed[a.js_index], c.update(m.value),
+            u = exc.blending_law(received_parsed[a.js_index], c.update(m.value),
                              predictor.alpha*predictor.active)
 
             a.duty_set = a.duty_span * u/(2) + a.duty_mid
