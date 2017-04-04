@@ -20,26 +20,28 @@
 # Modified:
 #   * October 17, 2016 - name changed to blended.py, all in place except predictor and controller
 #   * October 25, 2016 - input responsive blending, mode 2
+#   * April 4, 2017 - updated for technote extension of IFAC work
 #
 ##########################################################################################
 
-from excavator import *
+import excavator as exc
 import socket
 import time
-from sg_model_1101 import sg_model
-from trajectories import *
+from sg_models.sgs_0403 import sg_model
+import trajectories as traj
 from PID import PID
+import numpy as np
 
 
 ## I/O
 # Initialize PWM/servo classes and measurement classes, note: this zeros the encoder
-temp = exc_setup()
+temp = exc.exc_setup()
 actuators = temp[0]
 measurements = temp[1]
 
 ## PREDICTION
 # Initialize predictor, mode 2 for input responsive, alpha = 0.5
-predictor = TriggerPrediction(2, sg_model, 0.5)
+predictor = exc.TriggerPrediction(sg_model, 1, 0.5)
 
 ## CONTROLLERS
 # PI Controllers for each actuator
@@ -68,12 +70,13 @@ if filename == '':
     print('No data storage selected')
 else:
     print('Writing headers to: ' + filename)
-    data = DataLogger(3, filename)
+    data = exc.DataLogger(3, filename)
 
 start = time.time()
 
 # In case packets are dropped, we intialize the joystick inputs
 received_parsed = [0, 0, 0, 0]
+flag = 0
 
 try:
     # Connect to server and send data
@@ -91,19 +94,24 @@ try:
 
         # Parse data (and apply joystick deadzone)
         try:
-            received_parsed = parse_joystick(sock.recv(4096), received_parsed)
+            received_parsed, flag = exc.parse_joystick_trigger(sock.recv(4096), received_parsed)
         except ValueError:
             pass
+        
+        # If things go wrong...
+        if flag:
+            break
 
         # Initial prediction step
-        sg, active = predictor.update_state([received_parsed[a.js_index] for a in actuators], [m.value for m in measurements])
-        # print 'Subgoal State: ', sg, active, '\n'
+        sg, active = predictor.update([m.value for m in measurements], 
+                                      [received_parsed[a.js_index] for a in actuators])
+        print 'Subgoal State: ', sg, active, '\n'
 
         # If active and need new trajectories
         if active and predictor.regen:
-            # Get max duration and trajecotry coefficients
-            dur = duration([m.value for m in measurements], sg_model[sg-1]['subgoal_pos'], [18, 27, 30, 0.9], [20]*4)
-            coeff = quintic_coeff(dur, [m.value for m in measurements], sg_model[sg-1]['subgoal_pos'])
+            # Get max duration and trajectory coefficients
+            dur = traj.duration([m.value for m in measurements], sg_model[sg-1]['subgoal_pos'], [18, 27, 30, 0.9], [20]*4)
+            coeff = traj.quintic_coeff(dur, [m.value for m in measurements], sg_model[sg-1]['subgoal_pos'])
 
             # Reset integrator and differentiator
             for c in controllers:
@@ -135,7 +143,10 @@ try:
 
         # Apply blending law, alpha will either be static or zero, set duty, and update servo
         for a, c, m in zip(actuators, controllers, measurements):
-            u = blending_law(received_parsed[a.js_index], c.update_sat(m.value), predictor.alpha*predictor.active, a.offset)
+            u = exc.blending_law(received_parsed[a.js_index], 
+                                 c.update_sat(m.value), 
+                                 predictor.alpha*predictor.active, 
+                                 index=a.js_index, offset=a.offset, oppose=True)
             # print a.actuator_name
             # print c.PID_sat
             # print received_parsed[a.js_index]
@@ -157,15 +168,8 @@ try:
 except KeyboardInterrupt:
     print '\nQuitting'
 finally:
-    homing(actuators, measurements, controllers, [10, 10, 2, 0], [0.3, 0.3, 0.3, 0.05], 10)
-    print '\nClosing PWM signals...'
-    sock.close()
-    for a in actuators:
-        a.duty_set = a.duty_mid
-        a.update_servo()
-    time.sleep(1)
-    for a in actuators:
-        a.close_servo()
+    exc.homing(actuators, measurements, controllers, [10, 10, 2, 0], [0.3, 0.3, 0.3, 0.05], 10)
+    exc.close_io(sock, actuators)
     if 'data' in locals():
         notes = raw_input('Notes about this trial: ')
         n = open('data/metadata.csv', 'a')

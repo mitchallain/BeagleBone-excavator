@@ -22,8 +22,9 @@ import excavator as exc
 import trajectories as traj
 import socket
 import time
-from sg_model import sg_model
+from sg_models.sgs_0403 import sg_model
 from PID import PID
+import pdb
 
 
 # Networking details
@@ -78,12 +79,17 @@ try:
 
         # Parse data (and apply joystick deadzone)
         try:
-            received_parsed = exc.parse_joystick(sock.recv(4096), received_parsed)
+            received_parsed, flag = exc.parse_joystick_trigger(sock.recv(4096), received_parsed)
         except ValueError:
             pass
+        
+        # If things go wrong...
+        if flag:
+            break
 
         # Initial prediction step
-        sg, active = predictor.update_state([received_parsed[a.js_index] for a in actuators], [m.value for m in measurements])
+        sg, active = predictor.update([m.value for m in measurements],
+                                      [received_parsed[a.js_index] for a in actuators])
 
         print 'Subgoal State: ', sg, active, '\n'
 
@@ -97,7 +103,7 @@ try:
         # If active and already generated trajectories
         if active:
             p_d, _, _, _ = traj.sine_func_v([active_timer-time.time()]*4, dt, tf, amax,
-                                       vmax, sg_model[predictor.prev-1]['subgoal_pos'], [0]*4, [0]*4, sg_model[sg-1]['subgoal_pos'], p_dprev, Dmin)
+                                            vmax, sg_model[predictor.prev-1]['subgoal_pos'], [0]*4, [0]*4, sg_model[sg-1]['subgoal_pos'], p_dprev, Dmin)
             step = time.time()
             # p_dprev = p_d
             # Setpoint for controller
@@ -108,7 +114,7 @@ try:
         # Apply blending law, alpha will either be static or zero, set duty, and update servo
         for a, c, m in zip(actuators, controllers, measurements):
             u = exc.blending_law(received_parsed[a.js_index], c.update(m.value),
-                             predictor.alpha*predictor.active)
+                                 predictor.alpha*predictor.active)
 
             a.duty_set = a.duty_span * u/(2) + a.duty_mid
             a.update_servo()
@@ -128,11 +134,10 @@ try:
 except KeyboardInterrupt:
     print '\nQuitting'
 finally:
-    print '\nClosing PWM signals...'
-    sock.close()
-    for a in actuators:
-        a.duty_set = a.duty_mid
-        a.update_servo()
-    time.sleep(1)
-    for a in actuators:
-        a.close_servo()
+    exc.close_io(sock, actuators)
+    if 'data' in locals():
+        notes = raw_input('Notes about this trial: ')
+        n = open('data/metadata.csv', 'a')
+        n.write('\n' + filename + ',' + notes)
+        n.close()
+        data.close()

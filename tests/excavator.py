@@ -32,10 +32,12 @@ from bbio.libraries.RotaryEncoder import RotaryEncoder
 import numpy as np
 import time
 import pickle
-from scipy.stats import mvn, multivariate_normal
+from scipy.stats import mvn
+# from scipy.stats import multivariate_normal
 import math
 # import datetime
 # import os
+import pdb
 
 
 class Servo():
@@ -108,7 +110,6 @@ class Measurement():
     def update_measurement(self):
         '''Uses lookup tables and current analog in value to find actuator displacement'''
         self.value = np.interp(ADC.read_raw(self.GPIO_pin), self.lookup[self.measure_type][0], self.lookup[self.measure_type][1])/10
-
 
 # class Estimator():  # Obviously unfinished haha
 #     '''Temporary class until encoder arrives'''
@@ -520,8 +521,8 @@ class TriggerPrediction():
         self.dispatch = {0: self.update_0,
                          1: self.update_1}
 
-        # self.subgoal = 0            # Subgoal 0 denotes no subgoal to start
-        # self.prev = 6
+        self.subgoal = 0            # Subgoal 0 denotes no subgoal to start
+        self.prev = 6
         self.active = False         # Active is bool, False means no assistance to start
         self.regen = True
 
@@ -534,7 +535,7 @@ class TriggerPrediction():
             state (np.array): m-length array of measurements
             action (np.array): m-length array of normalized (and deadbanded) inputs
         '''
-        self.dispatch[self.mode](state, action)
+        return self.dispatch[self.mode](state, action)
 
     def update_0(self, state, action):
         ''' Mode 0: only terminates, no active'''
@@ -556,7 +557,7 @@ class TriggerPrediction():
 
     def update_1(self, state, action):
         ''' Mode 1: IFAC style FSM predictor '''
-
+        # pdb.set_trace()
         # Look for a terminating cue
         for sg in self.sg_model:
             # Are we in a termination set?
@@ -601,6 +602,23 @@ def parse_joystick(received, received_parsed):
         raise ValueError
 
 
+def parse_joystick_trigger(received, received_parsed):
+    '''Rewritten to handle trigger input, see excavator.parse_joystick'''
+    deadzone = 0.2
+    toggle_invert = [1, 1, -1, -1]  # Invert [BM, SK, BK, SW] joystick
+    try:
+        received = received.translate(None, "[( )]").split(',')
+        for axis in xrange(len(received) - 1):
+            if (float(received[axis]) > deadzone) or (float(received[axis]) < -deadzone):
+                received_parsed[axis] = float(received[axis])*toggle_invert[axis]
+            else:
+                received_parsed[axis] = 0
+        return received_parsed[0:4], int(received[4])
+    except ValueError:
+        print '\nValue Error'
+        raise ValueError
+
+
 def blending_law(operator_input, controller_output, alpha, index=0, offset=0, oppose=False, swing=False):
     '''Blend inputs according to the following law:
 
@@ -616,6 +634,7 @@ def blending_law(operator_input, controller_output, alpha, index=0, offset=0, op
             index (int): actuator index
             offset (float): eliminate deadband, maps output [0, 1] to [offset, 1]
             oppose (bool): if True, allow assistance to oppose operator
+            swing (bool): if False, swing function is unblended
 
         Returns:
             blended output ub (mapped to offset)
@@ -742,3 +761,14 @@ def homing(actuators, measurements, controllers, home, error=[0, 0, 0, 0], dur=0
 
 def saturate(x, lower, upper):
     return max(lower, min(x, upper))
+
+
+def close_io(socket, actuators):
+    print '\nClosing PWM signals...'
+    socket.close()
+    for a in actuators:
+        a.duty_set = a.duty_mid
+        a.update_servo()
+    time.sleep(1)
+    for a in actuators:
+        a.close_servo()
