@@ -7,7 +7,7 @@
 # Manual operation of the excavator.
 # Records positions in the actuator space when the right joystick trigger is pulled
 #
-# NOTE:
+# NOTE: use with JS_server_UDP_eth_trigger.py
 #
 # Created: March 09, 2017 from manual.py
 #   - Mitchell Allain
@@ -34,7 +34,7 @@ def close_io(socket, actuators):
 
 
 def parse_joystick(received, received_parsed):
-    '''Parse joystick data from server_02.py, and convert to float'''
+    '''Rewritten to handle trigger input, see excavator.parse_joystick'''
     deadzone = 0.2
     toggle_invert = [1, 1, -1, -1]  # Invert [BM, SK, BK, SW] joystick
     try:
@@ -102,7 +102,7 @@ if __name__ == "__main__":
                 m.update_measurement()
 
             if trigger == 1:
-                # Data logging mode 2 (manual)
+                # Data logging mode 1 (manual)
                 try:
                     data.log([loop_start-start] +                   # Run-time clock
                              [a.duty_set for a in actuators] +      # BM, ST, BK, SW Duty Cycle Cmd
@@ -119,3 +119,4 @@ if __name__ == "__main__":
     finally:
         if 'data' in locals():
             data.close()
+        close_io(sock, actuators)
