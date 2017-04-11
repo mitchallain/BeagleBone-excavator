@@ -18,6 +18,7 @@
 #   * October 24, 2016 - Added homing routine
 #   * February 17, 2017 - Cleanup and packaging
 #   * March 07, 2017 - Added Predictor and GaussianPredictor class
+#   * April 10, 2017 - optimized potentiometer interpolation
 #   *
 #
 # Todo:
@@ -96,20 +97,37 @@ class Measurement():
         lookup (dict): dictionary with lookup tables for each string potentiometer, must be calibrated regularly
         value (float): displacement of actuator in cm
     '''
-    def __init__(self, GPIO_pin, measure_type):
+    def __init__(self, GPIO_pin, measure_type, units='cm'):
         ADC.setup()
         self.GPIO_pin = GPIO_pin
         self.measure_type = measure_type
-        self.lookup = {'boom': [[536.0, 564.0, 590.0, 627.0, 667.0, 704.0, 727.0, 762.0, 793.0, 813.0, 834.0, 849.0, 863.0, 881.0, 893.0, 909.0],    # BM Analog Input
-                                [0, 7.89, 14.32, 22.64, 33.27, 47.4, 56.5, 66.26, 75.85, 82.75, 90.5, 95.3, 101.2, 107.7, 112.7, 118.7]],                   # BM Displacement mm
-                       'stick': [[554.0, 602.0, 633.0, 660.0, 680.0, 707.0, 736.0, 762.0, 795.0, 820.0, 835.0, 867.0, 892.0, 919.0, 940.0, 959.0, 983.0, 1007.0, 1019.0],    # SK Analog Input
-                                [0, 11.7, 19.2, 26.2, 31, 38.4, 46.3, 53.7, 63.4, 71.5, 76.3, 87.0, 96.4, 106.1, 114.5, 122.1, 132.2, 143.1, 148.5]],                        # SK Displacement mm
-                       'bucket': [[153.0, 187.0, 235.0, 299.0, 346.0, 372.0, 412.0, 440.0, 477.0, 511.0, 529.0, 567.0, 588.0, 602.0, 605.0, 623.0],
-                                [0, 7.28, 15.89, 27.69, 37.3, 43.4, 52.6, 59.63, 68.86, 77.5, 82.5, 92.07, 98.25, 102.3, 103.15, 109.07]]}
+        self.lookup = {'boom': np.array([[536.0, 564.0, 590.0, 627.0, 667.0, 704.0,
+                                          727.0, 762.0, 793.0, 813.0, 834.0, 849.0,
+                                          863.0, 881.0, 893.0, 909.0],  # BM Analog Input
+                                         [0, 7.89, 14.32, 22.64, 33.27, 47.4, 56.5,
+                                          66.26, 75.85, 82.75, 90.5, 95.3, 101.2,
+                                          107.7, 112.7, 118.7]]),    # BM Displacement mm
+                       'stick': np.array([[554.0, 602.0, 633.0, 660.0, 680.0, 707.0,
+                                           736.0, 762.0, 795.0, 820.0, 835.0, 867.0,
+                                           892.0, 919.0, 940.0, 959.0, 983.0, 1007.0,
+                                           1019.0],                 # SK Analog Input
+                                          [0, 11.7, 19.2, 26.2, 31, 38.4, 46.3, 53.7,
+                                           63.4, 71.5, 76.3, 87.0, 96.4, 106.1, 114.5,
+                                           122.1, 132.2, 143.1, 148.5]]),  # SK Displacement mm
+                       'bucket': np.array([[153.0, 187.0, 235.0, 299.0, 346.0, 372.0,
+                                            412.0, 440.0, 477.0, 511.0, 529.0, 567.0,
+                                            588.0, 602.0, 605.0, 623.0],
+                                           [0, 7.28, 15.89, 27.69, 37.3, 43.4, 52.6,
+                                            59.63, 68.86, 77.5, 82.5, 92.07, 98.25,
+                                            102.3, 103.15, 109.07]])}
+        # switch to cm
+        if units == 'cm':
+            for v in self.lookup.values():
+                v[1] /= 10
 
     def update_measurement(self):
         '''Uses lookup tables and current analog in value to find actuator displacement'''
-        self.value = np.interp(ADC.read_raw(self.GPIO_pin), self.lookup[self.measure_type][0], self.lookup[self.measure_type][1])/10
+        self.value = np.interp(ADC.read_raw(self.GPIO_pin), self.lookup[self.measure_type][0], self.lookup[self.measure_type][1])
 
 # class Estimator():  # Obviously unfinished haha
 #     '''Temporary class until encoder arrives'''
@@ -119,6 +137,7 @@ class Measurement():
 
 #     def update_measurement(self):
 #         self.value = 0
+
 
 class Encoder():
     '''Encoder class to mimic Measurement class and allow listed value calls
@@ -172,7 +191,7 @@ class DataLogger():
             self.file.write('Time,Boom Cmd,Stick Cmd,Bucket Cmd,Swing Cmd,'
                             'Boom Ctrl,Stick Ctrl,Bucket Ctrl,Swing Ctrl,'
                             'Boom Blended,Stick Blended,Bucket Blended,Swing Blended,'
-                            'Boom Ms,Stick Ms,Bucket Ms,Swing Ms,Class,Confidence,\n')
+                            'Boom Ms,Stick Ms,Bucket Ms,Swing Ms,Subgoal,Active\n')
 
         elif self.mode == 4:   # Blended mvn mode (Commands, Controllers, Blended, Measurements, Likelihoods, Subgoal, Alpha)
             num_of_sgs = 6
@@ -182,7 +201,7 @@ class DataLogger():
                             'Boom Blended,Stick Blended,Bucket Blended,Swing Blended,'
                             'Boom Ms,Stick Ms,Bucket Ms,Swing Ms,' +
                             sg_header +
-                            ',Class,Confidence,\n')
+                            ',Subgoal,Alpha\n')
 
     def log(self, data_listed):
         self.file.write(','.join(map(str, data_listed))+'\n')

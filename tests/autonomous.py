@@ -7,7 +7,7 @@
 # Autonomous operation of the excavator. Records data and timestamps.
 #
 # NOTE: SERVO CLASS, INTERPOLATE FUNCTION, AND MISC DEPENDENCIES IMPORTED FROM EXCAVATOR.PY
-# 
+#
 #       controllers act on error until within ball of endpoints in actuator space
 #
 #
@@ -25,14 +25,18 @@
 #   * October 11, 2016 - going to switch dependecies to excavator
 #   * October 15, 2016 - encoder integration
 #   * October 24, 2016 - homing routine factored
+#   * April 06, 2017 - logging of trajectories
+#   *
 #
 ##########################################################################################
 
-from excavator import *
+import excavator as exc
 # import socket
 import numpy.polynomial.polynomial as poly
 from PID import PID
 import pickle
+import time
+import numpy as np
 
 
 ############################### This is old ###########################
@@ -80,7 +84,7 @@ task = pickle.load(pkl_file)
 pkl_file.close()
 
 # Initialize PWM/servo classes and measurement classes, note: this zeros the encoder
-temp = exc_setup()
+temp = exc.exc_setup()
 actuators = temp[0]
 measurements = temp[1]
 
@@ -90,7 +94,7 @@ if filename == '':
     print('No data storage selected')
 else:
     print('Writing headers to: ' + filename)
-    data = DataLogger(2, filename)
+    data = exc.DataLogger(2, filename)
 
 # Zero the encoder again
 measurements[3].encoder.zero()
@@ -115,47 +119,7 @@ controllers = [boom_PI, stick_PI, bucket_PI, swing_PI]
 # BEGIN HOMING, Homing routine to set point
 home = [task[0][i][1][0] for i in range(4)]
 
-# def homing(actuators, measurements, controllers, home):
-#     for i in range(4):
-#         controllers[i].setPoint(home[i])
-#         controllers[i].update(measurements[i].value)
-#     # tempstart = time.time()
-
-#     try:
-#         while np.linalg.norm([controllers[i].getError() for i in range(2)]+[controllers[3].getError()*30]) > 1:    # 1 cm radius ball about endpoint
-#             # Measurement
-#             for m in measurements:
-#                 m.update_measurement()
-#                 # print(m.value)
-
-#             for i in range(4):
-#                     # Update actuators with control action
-#                     actuators[i].duty_set = controllers[i].update(measurements[i].value) + actuators[i].duty_mid
-
-#             # Update PWM, saturation implemented in Servo class
-#             for a in actuators:
-#                 a.update_servo()
-#                 print(a.actuator_name + ': ' + str(a.duty_set))
-#             print('Error' + str(np.linalg.norm([controllers[i].getError() for i in range(2)]+[controllers[3].getError()*30])))
-
-#         for m in measurements:
-#             print(m.value)
-
-#         for a in actuators:  # Reset all duty cycles after homing
-#             a.duty_set = a.duty_mid
-#             a.update_servo()
-
-#     except KeyboardInterrupt:
-#         print '\nClosing PWM signals...'
-#         for a in actuators:
-#             a.duty_set = a.duty_mid
-#             a.update_servo()
-#         time.sleep(1)
-#         for a in actuators:
-#             a.close_servo()
-# # END HOMING
-
-homing(actuators, measurements, controllers, home, [0.3, 0.3, 0.3, 0.1], 10)
+exc.homing(actuators, measurements, controllers, home, [0.3, 0.3, 0.3, 0.1], 10)
 raw_input('Pausing...')
 start = time.time()
 
