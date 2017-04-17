@@ -27,10 +27,14 @@
 import excavator as exc
 import socket
 import time
-from sg_models.sgs_0403 import sg_model
+from sg_models.sgs_0413 import sg_model
 import trajectories as traj
 from PID import PID
 import numpy as np
+import logging
+
+# LOG
+logging.basicConfig(filename='blended.log', level=logging.DEBUG)
 
 
 ## I/O
@@ -70,6 +74,7 @@ if filename == '':
     print('No data storage selected')
 else:
     print('Writing headers to: ' + filename)
+    logging.info('Data File: ' + filename)
     data = exc.DataLogger(3, filename)
 
 start = time.time()
@@ -97,14 +102,20 @@ try:
             received_parsed, flag = exc.parse_joystick_trigger(sock.recv(4096), received_parsed)
         except ValueError:
             pass
-        
+
+        # Shuffle
+        action = [received_parsed[a.js_index] for a in actuators]
+
         # If things go wrong...
         if flag:
             break
 
         # Initial prediction step
-        sg, active = predictor.update([m.value for m in measurements], 
-                                      [received_parsed[a.js_index] for a in actuators])
+        sg, active = predictor.update([m.value for m in measurements], action)
+        logging.info('Subgoal: %s, Active %s' % (sg, active))
+        logging.info('JS[%i]: %s, IT: %s' % (predictor.sg_model[predictor.subgoal-1]['it'][0],
+                                             action[predictor.sg_model[predictor.subgoal-1]['it'][0]],
+                                             predictor.sg_model[predictor.subgoal-1]['it'][1]))
         print 'Subgoal State: ', sg, active, '\n'
 
         # If active and need new trajectories
@@ -117,7 +128,7 @@ try:
             for c in controllers:
                 c.setIntegrator(0)
                 c.setDerivator(0)
-            
+
             # Set flag to not regenerate trajectories
             predictor.regen = False
 
@@ -134,19 +145,21 @@ try:
             # Setpoint for controller
             for i, c in enumerate(controllers):
                 c.setPoint(np.polyval(coeff[i][::-1], t))  # This version of polyval need highest degree first
-            
-            # Turn off swing during subgoals 1, 2, 3
-            if (predictor.subgoal == 1) or (predictor.subgoal == 2) or (predictor.subgoal == 3):
+
+            # Turn off swing during subgoals 2, 3, 4
+            if (predictor.subgoal == 2) or (predictor.subgoal == 3) or (predictor.subgoal == 4):
                 controllers[3].setPoint(measurements[3].value)
+                logging.info('Swing off for subgoal: %i' % predictor.subgoal)
 
             # alpha = predictor.alpha
 
         # Apply blending law, alpha will either be static or zero, set duty, and update servo
         for a, c, m in zip(actuators, controllers, measurements):
-            u = exc.blending_law(received_parsed[a.js_index], 
-                                 c.update_sat(m.value), 
-                                 predictor.alpha*predictor.active, 
-                                 index=a.js_index, offset=a.offset, oppose=True)
+            u = exc.blending_law(received_parsed[a.js_index],
+                                 c.update_sat(m.value),
+                                 predictor.alpha*predictor.active,
+                                 index=a.js_index, offset=a.offset, oppose=True,
+                                 swing=False)  # Opposition on and swing blending for sgs 0, 4, 5
             # print a.actuator_name
             # print c.PID_sat
             # print received_parsed[a.js_index]
@@ -154,7 +167,7 @@ try:
             # u = blending_law(received_parsed[a.js_index], c.update(m.value), 0)
             a.duty_set = a.duty_span * u/(2) + a.duty_mid
             a.update_servo()
-        
+
         try:
             data.log([loop_start-start] +                           # Run-time clock
                      received_parsed +                              # BM, ST, BK, SW joystick Cmd
