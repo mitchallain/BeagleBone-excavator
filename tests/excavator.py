@@ -187,7 +187,7 @@ class DataLogger():
                             'Boom Cmd,Stick Cmd,Bucket Cmd,Swing Cmd,'
                             'Boom Error,Stick Error,Bucket Error,Swing Error\n')
 
-        elif self.mode == 3:   # Blended mode (Commands, Controllers, Blended, Measurements, Class, Probability)
+        elif self.mode == 3:   # Blended mode (Commands, Controllers, Blended, Measurements, Subgoal, Active)
             self.file.write('Time,Boom Cmd,Stick Cmd,Bucket Cmd,Swing Cmd,'
                             'Boom Ctrl,Stick Ctrl,Bucket Ctrl,Swing Ctrl,'
                             'Boom Blended,Stick Blended,Bucket Blended,Swing Blended,'
@@ -600,6 +600,8 @@ class TriggerPrediction():
         if not (less_than != negative):  # If input < threshold and threshold negative, or > = threshold and threshold positive
             self.active = True
             print(self.subgoal, 'Ass: True')
+        else:  # No input
+            self.active = False
 
         return self.subgoal, self.active
 
