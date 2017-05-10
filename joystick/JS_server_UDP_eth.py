@@ -20,7 +20,7 @@ import socket
 import pygame
 import time
 
-UDP_IP = '169.254.18.50'
+UDP_IP = '192.168.10.2'
 UDP_PORT = 9999
 
 print "UDP IP: ", UDP_IP
