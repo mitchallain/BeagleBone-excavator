@@ -27,7 +27,7 @@ if __name__ == "__main__":
 
     try:
         while True:
-            print(ADC.read_raw('P9_33'))    # print pin value
-            time.sleep(0.1)     # sleep for a tenth of a second
+            print(ADC.read_raw('P9_35'))    # print pin value
+            time.sleep(2)     # sleep for a tenth of a second
     except KeyboardInterrupt:
         print('\nQuitting')

@@ -20,7 +20,7 @@
 #
 ##########################################################################################
 
-from excavator import *
+import excavator as exc
 import socket
 import time
 
@@ -31,7 +31,7 @@ HOST, PORT = '', 9999
 if __name__ == "__main__":
 
     # Initialize PWM/servo classes and measurement classes, note: this zeros the encoder
-    temp = exc_setup()
+    temp = exc.exc_setup()
     actuators = temp[0]
     measurements = temp[1]
 
@@ -44,7 +44,7 @@ if __name__ == "__main__":
         print('No data storage selected')
     else:
         print('Writing headers to: ' + filename)
-        data = DataLogger(1, filename)
+        data = exc.DataLogger(1, filename)
 
     start = time.time()
     received_parsed = [0, 0, 0, 0]
@@ -61,20 +61,22 @@ if __name__ == "__main__":
 
             # Parse data (and apply joystick deadzone)
             try:
-                received_parsed = parse_joystick(received_joysticks, received_parsed)
+                received_parsed = exc.parse_joystick(received_joysticks, received_parsed)
+                # print(received_parsed)
             except ValueError:
                 pass
-            
-            # print received_parsed
-
-            for a in actuators:
-                a.duty_set = a.duty_span*(received_parsed[a.js_index]+1)/(2) + a.duty_min
-                a.update_servo()
-
-            print([a.duty_set for a in actuators])
 
             for m in measurements:
                 m.update_measurement()
+
+            for a in actuators:
+                # a.duty_set = a.duty_span*(received_parsed[a.js_index]+1)/(2) + a.duty_min
+                # a.update_servo()
+                a.command = received_parsed[a.js_index]
+                a.update_with_command()
+            # exc.safe_action(measurements, actuators)
+
+            print('%.3f %.3f %.3f %.3f' % tuple([a.duty_set for a in actuators]))
 
             # Data logging mode 2 (manual)
             try:
@@ -95,7 +97,7 @@ if __name__ == "__main__":
         for a in actuators:
             a.duty_set = a.duty_mid
             a.update_servo()
-        time.sleep(1)
+            time.sleep(0.2)
         for a in actuators:
             a.close_servo()
         if 'data' in locals():

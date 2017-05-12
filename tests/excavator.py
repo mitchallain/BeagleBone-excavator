@@ -60,15 +60,19 @@ class Servo():
         actuator_name (str, optional): Used identify actuators
         js_index (int, optional): Index of joystick list corresponding to this actuator
         '''
-    def __init__(self, servo_pin, duty_min, duty_max, actuator_name='', js_index=0, offset=0):
+    def __init__(self, servo_pin, duty_min, duty_max, actuator_name='', js_index=0, 
+                 offset=0, bounds=(-20, 20)):
         self.duty_min = duty_min
         self.duty_max = duty_max
         self.duty_span = self.duty_max - self.duty_min
         self.duty_mid = ((90.0 / 180) * self.duty_span + self.duty_min)
         self.duty_set = self.duty_mid
+        self.command = 0
         self.actuator_name = actuator_name
         self.js_index = js_index
         self.offset = offset
+        self.bounds = bounds
+        self.bound_span = bounds[1] - bounds[0]
 
         self.servo_pin = servo_pin
         print 'starting servo PWM'
@@ -77,6 +81,12 @@ class Servo():
     def update_servo(self):
         '''Saturate duty cycle at limits'''
         self.duty_set = max(self.duty_min, min(self.duty_max, self.duty_set))
+        PWM.set_duty_cycle(self.servo_pin, self.duty_set)
+
+    def update_with_command(self):
+        ''' Use normalized command attribute to set duty cycle'''
+        self.command = np.clip(self.command, -1, 1)
+        self.duty_set = self.duty_mid + (self.command * self.duty_span / 2.0)
         PWM.set_duty_cycle(self.servo_pin, self.duty_set)
 
     def close_servo(self):
@@ -681,13 +691,16 @@ def lin_map(x, a, b, u, v):
 #     data_stamp = os.path.basename(file_name)[:-3] + '_' + n.strftime('%m%d_%H%M')+'.csv'
 #     return data_stamp
 
-
 def exc_setup():
     '''Start all PWM classes and measurement classes'''
-    boom = Servo("P9_22", 4.939, 10.01, 'Boom', 0, 0.5)
-    stick = Servo("P8_13", 4.929, 9, 'Stick', 1, 0.5)
-    bucket = Servo("P8_34", 5.198, 10.03, 'Bucket', 2, 0.5)
-    swing = Servo("P9_42", 4.939, 10, 'Swing', 3, 0)
+    boom = Servo("P9_22", duty_min=4.5, duty_max=9.5, actuator_name='Boom', 
+                 js_index=0, offset=0.5, bounds=(0, 118.7))
+    stick = Servo("P8_13", duty_min=4.5, duty_max=9.5, actuator_name='Stick',
+                  js_index=1, offset=0.5, bounds=(0, 148.5))
+    bucket = Servo("P8_34", duty_min=5.0, duty_max=10.0, actuator_name='Bucket',
+                   js_index=2, offset=0.5, bounds=(0, 109.07))
+    swing = Servo("P9_42", duty_min=5.0, duty_max=10.0, actuator_name='Swing',
+                  js_index=3, offset=0, bounds=(-0.35, 1.92))  # (-10, 110) deg
     actuators = [boom, stick, bucket, swing]
 
     # Initialize Measurement classes for string pots
@@ -702,10 +715,10 @@ def exc_setup():
 
 def actuator_setup():
     '''Start all PWM classes'''
-    boom = Servo("P9_22", 4.939, 10.01, 'Boom', 0, 0.5)
-    stick = Servo("P8_13", 4.929, 9, 'Stick', 1, 0.5)
-    bucket = Servo("P8_34", 5.198, 10.03, 'Bucket', 2, 0.5)
-    swing = Servo("P9_42", 4.939, 10, 'Swing', 3, 0)
+    boom = Servo("P9_22", 4.5, 9.5, 'Boom', 0, 0.5)
+    stick = Servo("P8_13", 4.5, 9.5, 'Stick', 1, 0.5)
+    bucket = Servo("P8_34", 5.0, 10.0, 'Bucket', 2, 0.5)
+    swing = Servo("P9_42", 5.0, 10.0, 'Swing', 3, 0)
     return [boom, stick, bucket, swing]
 
 
@@ -793,3 +806,17 @@ def close_io(socket, actuators):
     time.sleep(1)
     for a in actuators:
         a.close_servo()
+
+
+def safe_action(measurements, actuators):
+    ''' Replaces method update_servo() of Servo class, enforces saturation and safe limits 
+    
+    Safe limits enforces action direction within 5% of actuator attribute bounds'''
+    for m, a in zip(measurements, actuators):
+        if (((m.value - a.bounds[0]) / a.bound_span) < 0.05):
+            # Enforce positive action
+            a.command *= np.clip(a.command, 0, 1)
+        elif (((m.value - a.bounds[1]) / a.bound_span) > -0.05):
+            # Enforce negative action
+            a.command = np.clip(a.command, -1, 0)
+        a.update_with_command()
