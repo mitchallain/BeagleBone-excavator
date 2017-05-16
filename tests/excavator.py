@@ -60,7 +60,7 @@ class Servo():
         actuator_name (str, optional): Used identify actuators
         js_index (int, optional): Index of joystick list corresponding to this actuator
         '''
-    def __init__(self, servo_pin, duty_min, duty_max, actuator_name='', js_index=0, 
+    def __init__(self, servo_pin, duty_min, duty_max, actuator_name='', js_index=0,
                  offset=0, bounds=(-20, 20)):
         self.duty_min = duty_min
         self.duty_max = duty_max
@@ -212,6 +212,10 @@ class DataLogger():
                             'Boom Ms,Stick Ms,Bucket Ms,Swing Ms,' +
                             sg_header +
                             ',Subgoal,Alpha\n')
+
+        elif self.mode == 5:  # Velocity tests (manual + flag)
+            self.file.write('Total Time,Loop Time,Boom Cmd,Stick Cmd,Bucket Cmd,Swing Cmd,'
+                            'Boom Ms,Stick Ms,Bucket Ms,Swing Ms,Flag,Actuator\n')
 
     def log(self, data_listed):
         self.file.write(','.join(map(str, data_listed))+'\n')
@@ -693,7 +697,7 @@ def lin_map(x, a, b, u, v):
 
 def exc_setup():
     '''Start all PWM classes and measurement classes'''
-    boom = Servo("P9_22", duty_min=4.5, duty_max=9.5, actuator_name='Boom', 
+    boom = Servo("P9_22", duty_min=4.5, duty_max=9.5, actuator_name='Boom',
                  js_index=0, offset=0.5, bounds=(0, 118.7))
     stick = Servo("P8_13", duty_min=4.5, duty_max=9.5, actuator_name='Stick',
                   js_index=1, offset=0.5, bounds=(0, 148.5))
@@ -809,8 +813,8 @@ def close_io(socket, actuators):
 
 
 def safe_action(measurements, actuators):
-    ''' Replaces method update_servo() of Servo class, enforces saturation and safe limits 
-    
+    ''' Replaces method update_servo() of Servo class, enforces saturation and safe limits
+
     Safe limits enforces action direction within 5% of actuator attribute bounds'''
     for m, a in zip(measurements, actuators):
         if (((m.value - a.bounds[0]) / a.bound_span) < 0.05):
@@ -820,3 +824,11 @@ def safe_action(measurements, actuators):
             # Enforce negative action
             a.command = np.clip(a.command, -1, 0)
         a.update_with_command()
+
+
+def check_in_bounds(measurements, actuators, margin=0.05):
+    ''' Returns boolean corresponding to whether machine pose is in bounds '''
+    for m, a in zip(measurements, actuators):
+        if (((m.value - a.bounds[0]) / a.bound_span) < margin) or (((m.value - a.bounds[1]) / a.bound_span) > -margin):
+            return False
+    return True
