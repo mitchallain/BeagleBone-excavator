@@ -111,14 +111,14 @@ class Measurement():
         ADC.setup()
         self.GPIO_pin = GPIO_pin
         self.measure_type = measure_type
-        self.lookup = {'boom': np.array([[535., 580., 624., 671., 720., 736., 774., 
+        self.lookup = {'boom': np.array([[535., 580., 624., 671., 720., 736., 774.,
                                           805., 836., 860., 885., 906.],  # BM Analog Input
                                          [0., 11.86, 21.59, 33.42, 45.72, 49.58,
                                           59.22, 68.76, 78.03, 85.9, 93.54, 102.72]]),    # BM Displacement mm
                        'stick': np.array([[591., 656., 693., 725., 757., 798., 823.,
-                                           854., 886., 912., 938., 963., 980., 1003., 
+                                           854., 886., 912., 938., 963., 980., 1003.,
                                            1019., 1030., 1048., 1060.],                 # SK Analog Input
-                                          [0., 14.97, 23.38, 32.45, 40.32, 52.05, 
+                                          [0., 14.97, 23.38, 32.45, 40.32, 52.05,
                                            59.98, 69.42, 79.7, 88.47, 97.65, 107.07,
                                            114.19, 123.15, 130.29, 135.31, 142.58, 148.35]]),  # SK Displacement mm
                        'bucket': np.array([[149., 208., 269., 342., 395., 445., 478.,
@@ -211,6 +211,12 @@ class DataLogger():
         elif self.mode == 5:  # Velocity tests (manual + flag)
             self.file.write('Total Time,Loop Time,Boom Cmd,Stick Cmd,Bucket Cmd,Swing Cmd,'
                             'Boom Ms,Stick Ms,Bucket Ms,Swing Ms,Flag,Actuator\n')
+
+        elif self.mode == 6:   # Autonomous mode 2
+            self.file.write('Time,Boom Ms,Stick Ms,Bucket Ms,Swing Ms,'
+                            'Boom Cmd,Stick Cmd,Bucket Cmd,Swing Cmd,'
+                            'Boom Error,Stick Error,Bucket Error,Swing Error,'
+                            'Boom Ref,Stick Ref,Bucket Ref,Swing Ref\n')
 
     def log(self, data_listed):
         self.file.write(','.join(map(str, data_listed))+'\n')
