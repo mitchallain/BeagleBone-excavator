@@ -19,7 +19,7 @@
 import excavator as exc
 import numpy as np
 import time
-
+import pdb
 
 def load_logger():
     # Initialize DataLogger class with mode 2 for autonomy
@@ -28,7 +28,7 @@ def load_logger():
         print('No data storage selected')
     else:
         print('Writing headers to: ' + filename)
-        data = exc.DataLogger(2, filename)
+        data = exc.DataLogger(5, filename)
         return data
 
 
@@ -40,13 +40,13 @@ def main():
 
     # Desired movement sequence (BM up, SK out, BK in, SW ccw, SW cw,
     #                            BK out, SK in, BM down)
-    seq = (0, 1, 2, 3, 3, 2, 1, 0)
+    seq = (0, 1, 2, 2, 1, 0)
     duties = []  # list of np arrays of duty commands
 
     for i, a in enumerate(actuators):  # build up test array
-        pos = np.linspace(a.duty_mid, a.duty_max, 26)
-        neg = np.linspace(a.duty_mid, a.duty_min, 26)
-        c = np.zeros(52)
+        pos = np.linspace(a.duty_mid + 0.8, a.duty_max, 18)
+        neg = np.linspace(a.duty_mid - 0.8, a.duty_min, 18)
+        c = np.zeros(36)
         c[0::2] = pos
         c[1::2] = neg
         duties.append(c)
@@ -59,17 +59,18 @@ def main():
         m.update_measurement()
 
     try:
-        while j[0] < 52:  # BM less than 52 times
+        while j[0] < 36:  # BM less than 52 times
             for i in seq:
                 seq_start = time.time()
-                while exc.check_in_bounds(measurements, actuators) and ((time.time() - start) < 10):
+                j[i] += 1
+                while (exc.check_in_bounds([measurements[i]], [actuators[i]]) or (time.time() - seq_start < 3)) and (time.time() - seq_start < 5):
                     loop_start = time.time()
-
-                    j[i] += 1
-                    actuators[i].duty_set = duties[i][j]
-                    print('%s Duty Cycle: %.3f' % (actuators[i].actuator_name, duties[i][j]))
+                    print(exc.check_in_bounds([measurements[i]], [actuators[i]]))
+                    actuators[i].duty_set = duties[i][j[i]]
+                    # pdb.set_trace()
+                    print('%s Duty Cycle: %.3f, j: %s, Clock: %.2f' % (actuators[i].actuator_name, duties[i][j[i]], j, time.time() - start))
                     actuators[i].update_servo()
-
+    
                     try:
                         data.log([time.time() - start, time.time() - seq_start] +  # Run-time clock
                                  [a.duty_set for a in actuators] +      # BM, ST, BK, SW Duty Cycle Cmd
@@ -77,17 +78,20 @@ def main():
                                  [flag, i])
                     except NameError:
                         pass
-
+                    except AttributeError:
+                        pass
+    
                     flag = 0
-
+    
                     while (time.time() - loop_start) < 0.025:
                         pass
-
+    
                 for a in actuators:
                     a.duty_set = a.duty_mid
                     a.update_servo()
-
+    
                 flag = 1
+    # print(j, i)
 
     except KeyboardInterrupt:
         print '\nQuitting'

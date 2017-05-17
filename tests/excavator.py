@@ -111,25 +111,20 @@ class Measurement():
         ADC.setup()
         self.GPIO_pin = GPIO_pin
         self.measure_type = measure_type
-        self.lookup = {'boom': np.array([[536.0, 564.0, 590.0, 627.0, 667.0, 704.0,
-                                          727.0, 762.0, 793.0, 813.0, 834.0, 849.0,
-                                          863.0, 881.0, 893.0, 909.0],  # BM Analog Input
-                                         [0, 7.89, 14.32, 22.64, 33.27, 47.4, 56.5,
-                                          66.26, 75.85, 82.75, 90.5, 95.3, 101.2,
-                                          107.7, 112.7, 118.7]]),    # BM Displacement mm
-                       'stick': np.array([[554.0, 602.0, 633.0, 660.0, 680.0, 707.0,
-                                           736.0, 762.0, 795.0, 820.0, 835.0, 867.0,
-                                           892.0, 919.0, 940.0, 959.0, 983.0, 1007.0,
-                                           1019.0],                 # SK Analog Input
-                                          [0, 11.7, 19.2, 26.2, 31, 38.4, 46.3, 53.7,
-                                           63.4, 71.5, 76.3, 87.0, 96.4, 106.1, 114.5,
-                                           122.1, 132.2, 143.1, 148.5]]),  # SK Displacement mm
-                       'bucket': np.array([[153.0, 187.0, 235.0, 299.0, 346.0, 372.0,
-                                            412.0, 440.0, 477.0, 511.0, 529.0, 567.0,
-                                            588.0, 602.0, 605.0, 623.0],
-                                           [0, 7.28, 15.89, 27.69, 37.3, 43.4, 52.6,
-                                            59.63, 68.86, 77.5, 82.5, 92.07, 98.25,
-                                            102.3, 103.15, 109.07]])}
+        self.lookup = {'boom': np.array([[535., 580., 624., 671., 720., 736., 774., 
+                                          805., 836., 860., 885., 906.],  # BM Analog Input
+                                         [0., 11.86, 21.59, 33.42, 45.72, 49.58,
+                                          59.22, 68.76, 78.03, 85.9, 93.54, 102.72]]),    # BM Displacement mm
+                       'stick': np.array([[591., 656., 693., 725., 757., 798., 823.,
+                                           854., 886., 912., 938., 963., 980., 1003., 
+                                           1019., 1030., 1048., 1060.],                 # SK Analog Input
+                                          [0., 14.97, 23.38, 32.45, 40.32, 52.05, 
+                                           59.98, 69.42, 79.7, 88.47, 97.65, 107.07,
+                                           114.19, 123.15, 130.29, 135.31, 142.58, 148.35]]),  # SK Displacement mm
+                       'bucket': np.array([[149., 208., 269., 342., 395., 445., 478.,
+                                            502., 551., 584., 612., 618.],
+                                           [0., 11.42, 22.6, 37.2, 49.68, 61.95, 70.53,
+                                            76.48, 88.9, 98.52, 107.15, 109.1]])}
         # switch to cm
         if units == 'cm':
             for v in self.lookup.values():
@@ -697,12 +692,12 @@ def lin_map(x, a, b, u, v):
 
 def exc_setup():
     '''Start all PWM classes and measurement classes'''
-    boom = Servo("P9_22", duty_min=4.5, duty_max=9.5, actuator_name='Boom',
-                 js_index=0, offset=0.5, bounds=(0, 118.7))
-    stick = Servo("P8_13", duty_min=4.5, duty_max=9.5, actuator_name='Stick',
-                  js_index=1, offset=0.5, bounds=(0, 148.5))
-    bucket = Servo("P8_34", duty_min=5.0, duty_max=10.0, actuator_name='Bucket',
-                   js_index=2, offset=0.5, bounds=(0, 109.07))
+    boom = Servo("P9_22", duty_min=4.4, duty_max=9.4, actuator_name='Boom',
+                 js_index=0, offset=0.5, bounds=(0, 11.87))
+    stick = Servo("P8_13", duty_min=4.3, duty_max=9.3, actuator_name='Stick',
+                  js_index=1, offset=0.5, bounds=(0, 14.85))
+    bucket = Servo("P8_34", duty_min=4.55, duty_max=9.55, actuator_name='Bucket',
+                   js_index=2, offset=0.5, bounds=(0, 10.907))
     swing = Servo("P9_42", duty_min=5.0, duty_max=10.0, actuator_name='Swing',
                   js_index=3, offset=0, bounds=(-0.35, 1.92))  # (-10, 110) deg
     actuators = [boom, stick, bucket, swing]
