@@ -68,11 +68,11 @@ def main():
                 # a.duty_set = a.duty_span*(received_parsed[a.js_index]+1)/(2) + a.duty_min
                 # a.update_servo()
                 a.command = received_parsed[a.js_index]
-                # a.update_with_command()
-            exc.safe_action(measurements, actuators)
+                a.update_with_command()
+            # exc.safe_action(measurements, actuators)
 
-            # print('%.3f %.3f %.3f %.3f' % tuple([a.duty_set for a in actuators]))
-            print(exc.check_in_bounds(measurements, actuators))
+            print('%.3f %.3f %.3f %.3f' % tuple([a.duty_set for a in actuators]))
+            # print(exc.check_in_bounds(measurements, actuators))
             
             # Data logging mode 2 (manual)
             try:

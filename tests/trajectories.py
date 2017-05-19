@@ -289,7 +289,7 @@ def quintic_coeff(t, l0, lf, t0=0, v0=0, vf=0, a0=0, af=0):
                  [0]*4,
                  [0]*4])
 
-    coeff = linalg.lstsq(Q, L)[0].transpose()
+    coeff = linalg.lstsq(Q, L)[0]
     return coeff
 
 

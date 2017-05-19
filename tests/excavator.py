@@ -213,7 +213,7 @@ class DataLogger():
                             'Boom Ms,Stick Ms,Bucket Ms,Swing Ms,Flag,Actuator\n')
 
         elif self.mode == 6:   # Autonomous mode 2
-            self.file.write('Time,Boom Ms,Stick Ms,Bucket Ms,Swing Ms,'
+            self.file.write('Total Time,Traj Time,Boom Ms,Stick Ms,Bucket Ms,Swing Ms,'
                             'Boom Cmd,Stick Cmd,Bucket Cmd,Swing Cmd,'
                             'Boom Error,Stick Error,Bucket Error,Swing Error,'
                             'Boom Ref,Stick Ref,Bucket Ref,Swing Ref\n')
@@ -698,11 +698,11 @@ def lin_map(x, a, b, u, v):
 
 def exc_setup():
     '''Start all PWM classes and measurement classes'''
-    boom = Servo("P9_22", duty_min=4.4, duty_max=9.4, actuator_name='Boom',
+    boom = Servo("P9_22", duty_min=4.8, duty_max=9.4, actuator_name='Boom',
                  js_index=0, offset=0.5, bounds=(0, 11.87))
-    stick = Servo("P8_13", duty_min=4.3, duty_max=9.3, actuator_name='Stick',
+    stick = Servo("P8_13", duty_min=4.5, duty_max=9.3, actuator_name='Stick',
                   js_index=1, offset=0.5, bounds=(0, 14.85))
-    bucket = Servo("P8_34", duty_min=4.55, duty_max=9.55, actuator_name='Bucket',
+    bucket = Servo("P8_34", duty_min=4.8, duty_max=9.6, actuator_name='Bucket',
                    js_index=2, offset=0.5, bounds=(0, 10.907))
     swing = Servo("P9_42", duty_min=5.0, duty_max=10.0, actuator_name='Swing',
                   js_index=3, offset=0, bounds=(-0.35, 1.92))  # (-10, 110) deg
