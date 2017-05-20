@@ -50,7 +50,7 @@ class Servo():
         duty_max (float): Maximum duty cycle
         actuator_name (str, optional): Used identify actuators
         js_index (int, optional): Index of joystick list corresponding to this actuator
-        offset (float): Deadband offset
+        offset (float): Deadband offset normalized (fraction of full travel in one direction)
 
     Attributes:
         duty_min (float): Minimum duty cycle
@@ -82,6 +82,11 @@ class Servo():
         '''Saturate duty cycle at limits'''
         self.duty_set = max(self.duty_min, min(self.duty_max, self.duty_set))
         PWM.set_duty_cycle(self.servo_pin, self.duty_set)
+    
+    def compensate_deadband(self):
+        ''' Call after setting command attribute to map out deadband'''
+        self.command = (self.offset * np.sign(self.command) + 
+                        (1 - self.offset) * self.command)
 
     def update_with_command(self):
         ''' Use normalized command attribute to set duty cycle'''
@@ -699,13 +704,13 @@ def lin_map(x, a, b, u, v):
 def exc_setup():
     '''Start all PWM classes and measurement classes'''
     boom = Servo("P9_22", duty_min=4.8, duty_max=9.4, actuator_name='Boom',
-                 js_index=0, offset=0.5, bounds=(0, 11.87))
+                 js_index=0, offset=0.55, bounds=(0, 11.87))
     stick = Servo("P8_13", duty_min=4.5, duty_max=9.3, actuator_name='Stick',
-                  js_index=1, offset=0.5, bounds=(0, 14.85))
+                  js_index=1, offset=0.70, bounds=(0, 14.85))
     bucket = Servo("P8_34", duty_min=4.8, duty_max=9.6, actuator_name='Bucket',
-                   js_index=2, offset=0.5, bounds=(0, 10.907))
+                   js_index=2, offset=0.70, bounds=(0, 10.907))
     swing = Servo("P9_42", duty_min=5.0, duty_max=10.0, actuator_name='Swing',
-                  js_index=3, offset=0, bounds=(-0.35, 1.92))  # (-10, 110) deg
+                  js_index=3, offset=0.24, bounds=(-0.35, 1.92))  # (-10, 110) deg
     actuators = [boom, stick, bucket, swing]
 
     # Initialize Measurement classes for string pots
@@ -719,16 +724,21 @@ def exc_setup():
 
 
 def actuator_setup():
-    '''Start all PWM classes'''
-    boom = Servo("P9_22", 4.5, 9.5, 'Boom', 0, 0.5)
-    stick = Servo("P8_13", 4.5, 9.5, 'Stick', 1, 0.5)
-    bucket = Servo("P8_34", 5.0, 10.0, 'Bucket', 2, 0.5)
-    swing = Servo("P9_42", 5.0, 10.0, 'Swing', 3, 0)
-    return [boom, stick, bucket, swing]
+    '''Start all PWM classes and measurement classes'''
+    boom = Servo("P9_22", duty_min=4.8, duty_max=9.4, actuator_name='Boom',
+                 js_index=0, offset=0.45, bounds=(0, 11.87))
+    stick = Servo("P8_13", duty_min=4.5, duty_max=9.3, actuator_name='Stick',
+                  js_index=1, offset=0.57, bounds=(0, 14.85))
+    bucket = Servo("P8_34", duty_min=4.8, duty_max=9.6, actuator_name='Bucket',
+                   js_index=2, offset=0.57, bounds=(0, 10.907))
+    swing = Servo("P9_42", duty_min=5.0, duty_max=10.0, actuator_name='Swing',
+                  js_index=3, offset=0, bounds=(-0.35, 1.92))  # (-10, 110) deg
+    actuators = [boom, stick, bucket, swing]
 
 
 def measurement_setup():
     '''Instantiate only the measurement classes'''
+    ADC.setup()
     boom_ms = Measurement('P9_37', 'boom')
     stick_ms = Measurement('P9_33', 'stick')
     bucket_ms = Measurement('P9_35', 'bucket')

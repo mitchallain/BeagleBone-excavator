@@ -69,11 +69,10 @@ class PID:
 
     def update(self, measurement):
         ''' Calculate PID output '''
-        self.e = self.set_point - measurement
-        self.error_int += self.e
+        self.e = self.setpoint - measurement
 
-        self.proportional = self.kp * self.error
-        self.integral = np.clip(self.error_int * self.ki, self.i_min, self.i_max)
+        self.proportional = self.kp * self.e
+        self.integral = np.clip(self.integral + self.e * self.ki, self.i_min, self.i_max)
         self.derivative = (self.e - self.e1) * self.kd
 
         self.e1 = self.e
@@ -120,13 +119,11 @@ class TustinPID():
         setpoint (float): set point for controller
     """
 
-    def __init__(self, T, kp, ki=0.0, kd=0.0, i_max=10, i_min=-10, out_max=1.0, out_min=-1.0):
+    def __init__(self, T, kp, ki=0.0, kd=0.0, out_max=1.0, out_min=-1.0):
         self.A = (4.0 * kd + ki * (T**2) + 2.0 * kp * T) / (2.0 * T)
         self.B = (2 * ki * (T**2) - 8.0 * kd) / (2.0 * T)
         self.C = (4.0 * kd + ki * (T**2) - 2.0 * kp * T) / (2.0 * T)
 
-        self.i_max = i_max
-        self.i_min = i_min
         self.out_max = out_max
         self.out_min = out_min
 
@@ -140,11 +137,11 @@ class TustinPID():
 
     def update(self, measurement):
         ''' Calculate PID output '''
-        self.e = self.set_point - measurement
+        self.e = self.setpoint - measurement
         self.u = self.A * self.e + self.B * self.e1 + self.C * self.e2 + self.u2
 
         # Saturate
-        self.u = np.clip(self.u, self.out_min, self.out_min)
+        self.u = np.clip(self.u, self.out_min, self.out_max)
 
         # Housekeeping
         self.e2 = self.e1

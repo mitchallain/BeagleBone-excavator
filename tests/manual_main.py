@@ -68,6 +68,7 @@ def main():
                 # a.duty_set = a.duty_span*(received_parsed[a.js_index]+1)/(2) + a.duty_min
                 # a.update_servo()
                 a.command = received_parsed[a.js_index]
+                a.compensate_deadband()
                 a.update_with_command()
             # exc.safe_action(measurements, actuators)
 
