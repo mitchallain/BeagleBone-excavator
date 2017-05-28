@@ -767,3 +767,123 @@ def homing(actuators, measurements, controllers, home, error=[0, 0, 0, 0], dur=0
 
 def saturate(x, lower, upper):
     return max(lower, min(x, upper))
+
+
+# def construct_prediction_model()
+class ActionCompPredictor():
+    '''Action comparison based predictor
+
+    NOTE: Subgoal numbering now indexes from zero
+
+    Args:
+        filename (str): filename of pickled means, covs, queues, and transition matrix
+        beta (float): beta scales the action comparison distribution
+
+    Attributes:
+        last_confirmed (int): index of last subgoal from check_if_terminated()
+        last_suspected (int): last subgoal to activate blending
+        subgoal (int): current subgoal
+        likelihood (np.array): k-length array of action likelihoods
+        subgoal_probability (np.array): k-length array of posterior probabilities
+        alpha (float): blending parameter
+        alpha_threshold (float): threshold to activate blending
+        means (np.array): k x m array of subgoal means
+        covs (np.array): k x m x m array of subgoal covariances
+        trans (np.array): k x k stochastic transition matrix
+        kdim (np.array): number of subgoals inferred from the above vars
+
+    Methods:
+        update(): maps the values of subgoal_probability to a blending parameter value
+        get_target_sg_pos(): returns location of current subgoal
+        check_if_terminated(): checks if current state is within subgoal dist
+                               with confidence over threshold
+    '''
+    def __init__(self, filename='gmm_model_exp.pkl', beta=1):
+        self.last_confirmed = -1
+        self.last_suspected = -1
+        self.subgoal = -1
+        self.alpha = 0
+        self.beta = beta
+        self.alpha_threshold = 0.7
+
+        # Model params
+        with open(filename, 'rb') as openfile:
+            tmp = pickle.load(openfile)
+            self.means = tmp['means']
+            self.covs = tmp['covs']
+            self.trans = tmp['trans']
+            self.queus = tmp['queues']
+
+        self.kdim = len(self.means)
+        self.subgoal_probability = np.zeros(self.kdim)
+        self.likelihood = np.zeros(self.kdim)
+
+    def update(self, states, actions):
+        self.check_if_terminated(states)
+
+        # Action comparison likelihood
+        self.likelihood = get_action_comp_likelihood(states, actions, self.means,
+                                                     self.covs, beta=self.beta)
+
+        # Apply transition vector corresponding to last confirmed sg
+        self.subgoal_probability = self.trans[:, self.last_confirmed] * self.likelihood
+
+        # Normalize posterior
+        self.subgoal_probability = np.nan_to_num(self.subgoal_probability / np.sum(self.subgoal_probability))
+
+        p_map = np.max(self.subgoal_probability)
+        if (p_map > self.alpha_threshold):
+            self.alpha = lin_map(p_map, self.alpha_threshold, 1, 0.3, 0.6)
+            self.subgoal = np.argmax(self.subgoal_probability)
+            logging.info('Active seeking SG: {} with alpha: {:.2f}'
+                .format(self.subgoal, self.alpha))
+        else:
+            self.alpha = 0
+
+    def get_target_sg_pos(self):
+        return self.means[self.subgoal]
+
+    def check_if_terminated(self, states, threshold=0.6):
+        ''' See if states is within termination region, assign last subgoal'''
+        termination_probability = np.array([multivariate_normal(self.means[i], self.covs[i]).pdf(states) for i in xrange(self.kdim)])
+        if (termination_probability > threshold).any():
+            self.last_confirmed = np.argmax(termination_probability)
+            logging.info('Terminated SG: {}'.format(self.last_confirmed))
+
+    def check_if_terminated_update_stats(self, states, actions, threshold=0.001):
+        ''' Checks if we are in a subgoal, which is defined as being within a
+            (NEW) subgoal distribution (VALID), and having zero velocity (STILL)
+
+            If all three conditions True, then add to queue and recompute stats
+            Can suppress self.update_stats() for static distributions
+
+            Todo: revise these conditions (is zero velocity appropriate?)
+            '''
+        termination_probability = np.array([multivariate_normal(self.means[i], self.covs[i]).pdf(states) for i in xrange(self.kdim)])
+        NEW = (np.argmax(termination_probability) != self.last_confirmed)
+        VALID = (termination_probability > threshold).any()
+        STILL = (actions == 0).all()
+        if VALID and STILL and NEW:
+            # Set last_confirmed to sg index
+            self.last_confirmed = np.argmax(termination_probability)
+            # Add location to corresponding queue
+            self.queues[self.last_confirmed].append(states)
+            self.update_stats()
+
+    def update_stats(self):
+        ''' Recalculate stats for last confirmed'''
+        self.means[self.last_confirmed] = np.mean(self.queues[self.last_confirmed], axis=0)
+        self.covs[self.last_confirmed] = np.cov(np.array(self.queues[self.last_confirmed]).T)
+
+
+def get_action_comp_likelihood(states, actions, means, covs, beta=1):
+    ''' Returns the exponential likelihoods for each subgoal, when the direction
+        of the action is compared to the vector to the subgoal
+
+            P(ai | si, zi) = exp[ beta * (cos(theta) - 1) ]
+
+        where theta is angle between action and vec to subgoal
+    '''
+    p_sz = means - states
+    dir_comp = (np.dot(p_sz, actions) / (np.linalg.norm(p_sz, axis=1) * np.linalg.norm(actions))) - 1
+    return np.e**(beta * dir_comp)

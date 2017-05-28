@@ -104,7 +104,7 @@ class Wireframe:
             node.z = cz + d * math.cos(theta)
             node.x = cx + d * math.sin(theta)
 
-    def rotateZ(self, (cx,cy,cz), radians):        
+    def rotateZ(self, (cx,cy,cz), radians):
         for node in self.nodes:
             x      = node.x - cx
             y      = node.y - cy
@@ -274,350 +274,6 @@ class ExcWireframe(Wireframe):
         self.translate('y', 300)
 
 
-# class Predictor():
-#     '''Abstract class for predictors, subclass and implement an update method
-
-#     Args:
-#         subgoal_dists (np.array): list of k distributions of m variables
-
-#     Attributes:
-#         last_subgoal (int): index of last known subgoal in subgoal_dists
-#         alpha (float): blending parameter
-
-#     Methods:
-#         get_alpha(): return self.alpha
-#         update_alpha(): maps the values of subgoal_probability to a blending parameter value
-#     '''
-#     def __init__(self, subgoal_dists):
-#         self.last_subgoal = 0
-#         self.alpha = 0
-#         self.subgoal_probability = np.zeros(6)
-#         self.subgoal_dists = subgoal_dists
-
-#     def get_alpha(self):
-#         return self.alpha
-
-#     def probability_map_to_alpha(self, threshold=0.7):
-#         if (self.subgoal_probability > threshold).any():
-#             self.alpha = np.argmax(self.subgoal_probability > 0.7)
-#         else:
-#             self.alpha = 0
-
-#     def state_check_if_terminated(self, state, threshold=0.8):
-#         ''' See if state is within termination region, assign last subgoal'''
-#         termination_probability = np.array([sg.pdf(state) for sg in self.subgoal_dists])
-#         if (termination_probability > threshold).any():
-#             self.last_subgoal = np.argmax(termination_probability) + 1
-
-
-# class GaussianPredictor(Predictor):
-#     ''' Subclass of Predictor class '''
-#     def update(self, state, action):
-#         self.subgoal_probability = get_mvn_action_likelihood(state, action, self.means, self.covs)[0]
-
-
-# def get_mvn_action_likelihood(states, actions, means, covs):
-#     ''' Taken from jupyter notebook gaussian-likelihood,
-#         uses Alan Genz/Enthought Inc.'s multivariate normal Fortran functions in Scipy
-
-#     Args:
-#         states (np.array): m-length state or n x m array of states
-#         actions (np.array): m-length action or n x m array of actions
-#         means (np.array): k x m array of means for k subgoals
-#         covs (np.array): k x m x m array of m covariance matrices for k subgoals
-
-#     Returns:
-#         action_likelihoods (np.array): n x k array of likelihoods for each subgoal for n states
-
-#     TODO:
-#         marginalize inactive variables by dropping covariances instead of computing whole domain
-#     '''
-#     if states.shape != actions.shape:
-#         raise ValueError('state and action args must have equal dimension.')
-#     elif states.ndim == 1:
-#         states = np.expand_dims(states, axis=0)
-#         actions = np.expand_dims(actions, axis=0)
-#     action_likelihoods = np.zeros((states.shape[0], means.shape[0]))
-#     indicator = np.zeros(action_likelihoods.shape)
-#     for i in xrange(states.shape[0]):
-#         for g in xrange(means.shape[0]):
-#             low = np.zeros(states.shape[1])
-#             upp = np.copy(low)
-#             for j in xrange(states.shape[1]):
-#                 if actions[i, j] < 0:
-#                     low[j] = means[g, j] - 10 * covs[g, j, j]
-#                     upp[j] = states[i, j]
-#                 elif actions[i, j] > 0:
-#                     low[j] = states[i, j]
-#                     upp[j] = means[g, j] + 10 * covs[g, j, j]
-#                 else:  # Yields probability 1
-#                     low[j] = means[g, j] - 10 * covs[g, j, j]
-#                     upp[j] = means[g, j] + 10 * covs[g, j, j]
-#             # pdb.set_trace()
-#             action_likelihoods[i, g], indicator[i, g] = mvn.mvnun(low, upp, means[g], covs[g], maxpts=100000)
-#             if (indicator[i, g] == 1):
-#                 print(low, upp, means[g], covs[g])
-#     # if (indicator == 1).any():
-#         # print('mvnun failed: error code 1')
-#         # print(low, upp, means, covs)
-#         # raise ArithmeticError('Fortran function mvnun: error code 1')
-#     return action_likelihoods
-
-
-# def get_mvn_action_likelihood_marginal(states, actions, means, covs):
-#     ''' Rewriting the original multivariate action likelihood to marginalize out inactive vars
-#         uses Alan Genz/Enthought Inc.'s multivariate normal Fortran functions in Scipy
-
-#     Args:
-#         states (np.array): m-length state or n x m array of states
-#         actions (np.array): m-length action or n x m array of actions
-#         means (np.array): k x m array of means for k subgoals
-#         covs (np.array): k x m x m array of m covariance matrices for k subgoals
-
-#     Returns:
-#         action_likelihoods (np.array): n x k array of likelihoods for each subgoal for n states
-
-#     TODO:
-#         marginalize inactive variables by dropping covariances instead of computing whole domain
-#     '''
-
-#     if states.shape != actions.shape:
-#         raise ValueError('state and action args must have equal dimension.')
-
-#     elif states.ndim == 1:
-#         states = np.expand_dims(states, axis=0)
-#         actions = np.expand_dims(actions, axis=0)
-
-#     action_likelihoods = np.zeros((states.shape[0], means.shape[0]))
-#     indicator = np.zeros(action_likelihoods.shape)
-
-#     # For state, action pair index i
-#     for i in xrange(states.shape[0]):
-#         # Find active axes and skip if null input
-#         active = np.where(actions[i] != 0)[0]
-#         if active.size == 0:
-#             break
-
-#         # Else, compute mvn pdf integration for each subgoal
-#         for g in xrange(means.shape[0]):
-#             low = np.zeros(active.shape)
-#             upp = np.copy(low)
-
-#             # Iterate through active indices and set low and upper bounds of ATD action-targeted domain
-#             # Bounds at +/-10 sig figs because no option for infinite, check this is sufficient b/c skew
-#             for num, j in enumerate(active):
-#                 if actions[i, j] < 0:  # Negative action
-#                     low[num] = means[g, j] - 10 * covs[g, j, j]
-#                     upp[num] = states[i, j]
-#                 else:  # Postive action
-#                     low[num] = states[i, j]
-#                     upp[num] = means[g, j] + 10 * covs[g, j, j]
-
-#             # Marginalize out inactive variables by dropping means and covariances
-#             means_marg = means[g][active]
-#             covs_marg = covs[g][active][:, active]
-#             # pdb.set_trace()
-#             action_likelihoods[i, g], indicator[i, g] = mvn.mvnun(low, upp, means_marg, covs_marg, maxpts=100000)
-
-#             if (indicator[i, g] == 1):
-#                 print(low, upp, means_marg, covs_marg)
-#     # if (indicator == 1).any():
-#         # print('mvnun failed: error code 1')
-#         # print(low, upp, means, covs)
-#         # raise ArithmeticError('Fortran function mvnun: error code 1')
-#     return action_likelihoods
-
-
-# def get_least_likelihood_uncorrelated(state, action, subgoal_dists):
-#     '''Computes least likelihood that action belongs to initiation set (see notes) with gaussian sgs
-
-#     Args:
-#         state (np.array): m-length machine state
-#         action (np.array): m-length (joystick) input with deadzone applied
-#         subgoal_dists (list): list of k distributions of m variables
-
-#     Ex: appending subgoal_dists for one subgoal
-#         subgoal = []
-#         means = np.array([0, 0, 0, 0]); std = np.array([1, 1, 1, 1])
-#         subgoal.append(scipy.stats.norm(mean=means, scale=std))
-
-#     Returns:
-#         sg_action_likelihood (np.array): k-length likelihood of input action for each possible subgoal
-#     '''
-#     if (action == 0).all():
-#         return np.zeros(6)
-
-#     primitive_likelihoods = np.zeros((6, 4))
-#     encoder = {-1: 0,
-#                0: 2,
-#                1: 1}
-
-#     # Map and encode the js values
-#     primitives = np.sign(action)
-#     encoded_primitives = np.copy(primitives)
-#     for k, v in encoder.iteritems():
-#         encoded_primitives[primitives == k] = v
-
-#     for i in range(6):
-#         primitive_likelihoods[i] = np.abs(subgoal_dists[i].cdf(state) - encoded_primitives)
-
-#     return np.min(primitive_likelihoods, axis=1)
-
-
-# class DeterministicPredictor(Predictor):
-#     ''' Assume that previous subgoal fully determines next subgoal
-
-#     Args:
-#         action (list: float): a list of action in the form [BM, SK, BK, SW]
-#         state (list: float): listed measurement values for each actuator
-#     '''
-#     def __init__(self):
-#         Predictor.__init__(self)
-#         self.init = [(3, 0.5), (0, -0.5), (1, 0.5), (0, 0.5), (3, -0.5), (2, -0.5)]
-
-#     def update(self, state, action):
-#         # Look for a terminating cue
-#         for i, sg in enumerate(self.subgoal_dists):
-#             # Are we in a termination set?
-#             # termination = ([abs(state[i] - sg['subgoal_pos'][i]) < sg['npt'][i] for i in range(4)] == [True]*4)
-#             termination = (sg.pdf(state) > 0.16).all()
-
-#             # Is this termination set different from our previous subgoal termination?
-#             # I.e., we don't want to reterminate in the same set over and over.
-#             different = (i != self.last_subgoal - 1)
-
-#             if termination and different:
-#                 self.prev = i + 1
-#                 self.subgoal = ((i + 1) % len(self.subgoal_dists)) + 1
-#                 self.alpha = 0
-
-#         less_than = (action[self.init[self.subgoal - 1][0]] < self.init[self.subgoal - 1][1])
-#         negative = ((self.init[self.subgoal - 1][1]) < 0)
-#         if less_than == negative:  # If input < threshold and threshold negative, or > = threshold and threshold positive
-#             self.alpha = 0.5
-
-
-# class TriggerPrediction():
-#     '''The trigger prediction class uses task specific event triggers to determine the current subgoal
-
-#     Args:
-#         mode (int): 0 is off, 1 is static alpha, 2 is dynamic alpha
-#         sg_model (list: dicts): list of subgoal model dicts, see example below
-#         alpha (float): BSC blending parameter preset for static mode
-
-#     Example arg sg_model:
-#         sg_model = [{'subgoal': 1,
-#                      'it': [3, -0.5]                            * Joystick index 3 (swing) move past halfway left
-#                      'subgoal_pos': [6.75, 0.91, 9.95, 1.41]    * Over the pile (actuator space coordinates)
-#                      'npt': [3, 3, 3, 0.2]}                     * +/- each of these values forms boundary around subgoal
-#                      'onpt': []},                               * Not yet implemented
-
-#                     {'subgoal': 2, ...
-#                     ...}]
-#     Attributes:
-#         mode (int): see above
-#         subgoal_model (obj):
-#         endpoints (list, floats): endpoints for the current task
-#         confidence (float): probability that current task is nominal
-#         blend_threshold (float): mininum confidence to initiate blending
-#         alpha (float): BSC blending parameter alpha
-#         subgoal (int): current triggered subgoal
-#         prev
-#         regen (bool): flag to regenerate trajectories
-#         active (bool): assistance active
-#         history: primitives and endpoints from recent history (window TBD, not yet implemented)
-
-#     ToDo:
-#         numpy and optimize, clean up attributes
-#     '''
-#     def __init__(self, sg_model, mode=1, alpha=0):
-#         self.mode = mode
-#         self.alpha = alpha
-#         self.sg_model = sg_model
-#         # if self.mode == 0:  # Blending off
-#         #     self.alpha = 0
-#         # elif self.mode == 1:  # Static alpha subgoal predictive
-#         #     self.alpha = alpha
-#         # elif self.mode == 2:  # Static blending with input responsive on and off states
-#         #     self.alpha = alpha
-#         # # elif self.mode == 3:
-#         self.dispatch = {0: self.update_0,  # Deterministic spatial prediction
-#                          1: self.update_1}  # Deterministic with input triggers
-#             #  We will see what goes here
-
-#         self.subgoal = 0            # Subgoal 0 denotes no subgoal to start
-#         self.prev = 6
-#         self.active = False         # Active is bool, False means no assistance to start
-#         self.regen = True
-
-#         # Important: build a list of the subgoals for iterating
-#         self.sg_list = [self.sg_model[i]['subgoal'] for i in range(len(self.sg_model[0]))]
-
-#     def update(self, js_inputs, ms_values):
-#         return self.dispatch[self.mode](js_inputs, ms_values)
-
-#     def update_0(self, js_inputs, ms_values):
-#         # Look for a terminating cue
-#         for sg in self.sg_model:
-#             # Are we in a termination set?
-#             termination = ([abs(ms_values[i] - sg['subgoal_pos'][i]) < sg['npt'][i] for i in range(4)] == [True]*4)
-
-#             # Is this termination set different from our previous subgoal termination?
-#             # I.e., we don't want to reterminate in the same set over and over.
-#             different = (sg['subgoal'] != self.prev)
-
-#             if termination and different:
-#                 print('Terminated: ', sg['subgoal'])
-#                 self.prev = sg['subgoal']
-#                 self.subgoal = (sg['subgoal'] % len(self.sg_list)) + 1  # i = (i % length) + 1 (some magic)
-#                 self.regen = True
-#                 self.active = False
-
-#     def update_1(self, js_inputs, ms_values):
-
-#         '''Poll event triggers and update subgoal and/or active boolean.
-
-#         TODO:
-#             fix sloppy indexing into sg_model, subgoals index from 1
-
-#         Args:
-#             js_inputs (list: float): a list of js_inputs in the form [BM, SK, BK, SW]
-#             ms_values (list: float): listed measurement values for each actuator
-
-#         Returns:
-#             subgoal (int)
-#             active (bool)
-#         '''
-
-#         # Look for a terminating cue
-#         for sg in self.sg_model:
-#             # Are we in a termination set?
-#             termination = ([abs(ms_values[i] - sg['subgoal_pos'][i]) < sg['npt'][i] for i in range(4)] == [True]*4)
-
-#             # Is this termination set different from our previous subgoal termination?
-#             # I.e., we don't want to reterminate in the same set over and over.
-#             different = (sg['subgoal'] != self.prev)
-
-#             if termination and different:
-#                 print('Terminated: ', sg['subgoal'])
-#                 self.prev = sg['subgoal']
-#                 self.subgoal = (sg['subgoal'] + 1) % len(self.sg_list)  # i = (i % length) + 1 (some magic)
-#                 self.regen = True
-#                 self.active = False
-
-#         less_than = ((js_inputs[self.sg_model[self.subgoal-1]['it'][0]] < self.sg_model[self.subgoal-1]['it'][1]))
-#         # print less_than
-#         negative = ((self.sg_model[self.subgoal-1]['it'][1]) < 0)
-#         # print negative
-#         if not (less_than != negative):  # If input < threshold and threshold negative, or > = threshold and threshold positive
-#             self.active = True
-#             print(self.subgoal, 'Ass: True')
-#         elif self.mode == 2:
-#             self.active = False
-
-#         return self.subgoal, self.active
-
-
 def create_filename(prefix):
     '''Returns string of format prefix + '_mmdd_hhmm.csv' '''
     n = datetime.datetime.now()
@@ -670,3 +326,302 @@ def forward_kin(state):
           gos + a2*s2 + a3*s23 + a4*s234)
 
     return o4
+
+ 
+class Predictor():
+    '''Abstract class for predictors, subclass and implement an update method
+    Args:
+        subgoal_dists (np.array): list of k distributions of m variables
+    Attributes:
+        last_subgoal (int): index of last known subgoal in subgoal_dists
+        alpha (float): blending parameter
+    Methods:
+        get_alpha(): return self.alpha
+        update_alpha(): maps the values of subgoal_probability to a blending parameter value
+    '''
+    def __init__(self, subgoal_dists):
+        self.last_subgoal = 0
+        self.alpha = 0
+        self.subgoal_probability = np.zeros(6)
+        self.subgoal_dists = subgoal_dists
+
+    def get_alpha(self):
+        return self.alpha
+
+    def probability_map_to_alpha(self, threshold=0.7):
+        if (self.subgoal_probability > threshold).any():
+            self.alpha = np.argmax(self.subgoal_probability > 0.7)
+        else:
+            self.alpha = 0
+
+    def state_check_if_terminated(self, state, threshold=0.8):
+        ''' See if state is within termination region, assign last subgoal'''
+        termination_probability = np.array([sg.pdf(state) for sg in self.subgoal_dists])
+        if (termination_probability > threshold).any():
+            self.last_subgoal = np.argmax(termination_probability) + 1
+
+
+class GaussianPredictor(Predictor):
+    ''' Subclass of Predictor class '''
+    def update(self, state, action):
+        self.subgoal_probability = get_mvn_action_likelihood(state, action, self.means, self.covs)[0]
+
+
+def get_mvn_action_likelihood(states, actions, means, covs):
+    ''' Taken from jupyter notebook gaussian-likelihood,
+        uses Alan Genz/Enthought Inc.'s multivariate normal Fortran functions in Scipy
+    Args:
+        states (np.array): m-length state or n x m array of states
+        actions (np.array): m-length action or n x m array of actions
+        means (np.array): k x m array of means for k subgoals
+        covs (np.array): k x m x m array of m covariance matrices for k subgoals
+    Returns:
+        action_likelihoods (np.array): n x k array of likelihoods for each subgoal for n states
+    TODO:
+        marginalize inactive variables by dropping covariances instead of computing whole domain
+    '''
+    if states.shape != actions.shape:
+        raise ValueError('state and action args must have equal dimension.')
+    elif states.ndim == 1:
+        states = np.expand_dims(states, axis=0)
+        actions = np.expand_dims(actions, axis=0)
+    action_likelihoods = np.zeros((states.shape[0], means.shape[0]))
+    indicator = np.zeros(action_likelihoods.shape)
+    for i in xrange(states.shape[0]):
+        for g in xrange(means.shape[0]):
+            low = np.zeros(states.shape[1])
+            upp = np.copy(low)
+            for j in xrange(states.shape[1]):
+                if actions[i, j] < 0:
+                    low[j] = means[g, j] - 10 * covs[g, j, j]
+                    upp[j] = states[i, j]
+                elif actions[i, j] > 0:
+                    low[j] = states[i, j]
+                    upp[j] = means[g, j] + 10 * covs[g, j, j]
+                else:  # Yields probability 1
+                    low[j] = means[g, j] - 10 * covs[g, j, j]
+                    upp[j] = means[g, j] + 10 * covs[g, j, j]
+            # pdb.set_trace()
+            action_likelihoods[i, g], indicator[i, g] = mvn.mvnun(low, upp, means[g], covs[g], maxpts=100000)
+            if (indicator[i, g] == 1):
+                print(low, upp, means[g], covs[g])
+    # if (indicator == 1).any():
+        # print('mvnun failed: error code 1')
+        # print(low, upp, means, covs)
+        # raise ArithmeticError('Fortran function mvnun: error code 1')
+    return action_likelihoods
+
+
+def get_mvn_action_likelihood_marginal(states, actions, means, covs):
+    ''' Rewriting the original multivariate action likelihood to marginalize out inactive vars
+        uses Alan Genz/Enthought Inc.'s multivariate normal Fortran functions in Scipy
+    Args:
+        states (np.array): m-length state or n x m array of states
+        actions (np.array): m-length action or n x m array of actions
+        means (np.array): k x m array of means for k subgoals
+        covs (np.array): k x m x m array of m covariance matrices for k subgoals
+    Returns:
+        action_likelihoods (np.array): n x k array of likelihoods for each subgoal for n states
+    TODO:
+        marginalize inactive variables by dropping covariances instead of computing whole domain
+    '''
+    if states.shape != actions.shape:
+        raise ValueError('state and action args must have equal dimension.')
+    elif states.ndim == 1:
+        states = np.expand_dims(states, axis=0)
+        actions = np.expand_dims(actions, axis=0)
+    action_likelihoods = np.zeros((states.shape[0], means.shape[0]))
+    indicator = np.zeros(action_likelihoods.shape)
+    # For state, action pair index i
+    for i in xrange(states.shape[0]):
+        # Find active axes and skip if null input
+        active = np.where(actions[i] != 0)[0]
+        if active.size == 0:
+            break
+        # Else, compute mvn pdf integration for each subgoal
+        for g in xrange(means.shape[0]):
+            low = np.zeros(active.shape)
+            upp = np.copy(low)
+            # Iterate through active indices and set low and upper bounds of ATD action-targeted domain
+            # Bounds at +/-10 sig figs because no option for infinite, check this is sufficient b/c skew
+            for num, j in enumerate(active):
+                if actions[i, j] < 0:  # Negative action
+                    low[num] = means[g, j] - 10 * covs[g, j, j]
+                    upp[num] = states[i, j]
+                else:  # Postive action
+                    low[num] = states[i, j]
+                    upp[num] = means[g, j] + 10 * covs[g, j, j]
+            # Marginalize out inactive variables by dropping means and covariances
+            means_marg = means[g][active]
+            covs_marg = covs[g][active][:, active]
+            # pdb.set_trace()
+            action_likelihoods[i, g], indicator[i, g] = mvn.mvnun(low, upp, means_marg, covs_marg, maxpts=100000)
+            if (indicator[i, g] == 1):
+                print(low, upp, means_marg, covs_marg)
+    # if (indicator == 1).any():
+        # print('mvnun failed: error code 1')
+        # print(low, upp, means, covs)
+        # raise ArithmeticError('Fortran function mvnun: error code 1')
+    return action_likelihoods
+
+
+def get_least_likelihood_uncorrelated(state, action, subgoal_dists):
+    '''Computes least likelihood that action belongs to initiation set (see notes) with gaussian sgs
+    Args:
+        state (np.array): m-length machine state
+        action (np.array): m-length (joystick) input with deadzone applied
+        subgoal_dists (list): list of k distributions of m variables
+    Ex: appending subgoal_dists for one subgoal
+        subgoal = []
+        means = np.array([0, 0, 0, 0]); std = np.array([1, 1, 1, 1])
+        subgoal.append(scipy.stats.norm(mean=means, scale=std))
+    Returns:
+        sg_action_likelihood (np.array): k-length likelihood of input action for each possible subgoal
+    '''
+    if (action == 0).all():
+        return np.zeros(6)
+    primitive_likelihoods = np.zeros((6, 4))
+    encoder = {-1: 0,
+               0: 2,
+               1: 1}
+    # Map and encode the js values
+    primitives = np.sign(action)
+    encoded_primitives = np.copy(primitives)
+    for k, v in encoder.iteritems():
+        encoded_primitives[primitives == k] = v
+    for i in range(6):
+        primitive_likelihoods[i] = np.abs(subgoal_dists[i].cdf(state) - encoded_primitives)
+    return np.min(primitive_likelihoods, axis=1)
+
+
+class DeterministicPredictor(Predictor):
+    ''' Assume that previous subgoal fully determines next subgoal
+    Args:
+        action (list: float): a list of action in the form [BM, SK, BK, SW]
+        state (list: float): listed measurement values for each actuator
+    '''
+    def __init__(self):
+        Predictor.__init__(self)
+        self.init = [(3, 0.5), (0, -0.5), (1, 0.5), (0, 0.5), (3, -0.5), (2, -0.5)]
+
+    def update(self, state, action):
+        # Look for a terminating cue
+        for i, sg in enumerate(self.subgoal_dists):
+            # Are we in a termination set?
+            # termination = ([abs(state[i] - sg['subgoal_pos'][i]) < sg['npt'][i] for i in range(4)] == [True]*4)
+            termination = (sg.pdf(state) > 0.16).all()
+            # Is this termination set different from our previous subgoal termination?
+            # I.e., we don't want to reterminate in the same set over and over.
+            different = (i != self.last_subgoal - 1)
+            if termination and different:
+                self.prev = i + 1
+                self.subgoal = ((i + 1) % len(self.subgoal_dists)) + 1
+                self.alpha = 0
+        less_than = (action[self.init[self.subgoal - 1][0]] < self.init[self.subgoal - 1][1])
+        negative = ((self.init[self.subgoal - 1][1]) < 0)
+        if less_than == negative:  # If input < threshold and threshold negative, or > = threshold and threshold positive
+            self.alpha = 0.5
+
+
+class TriggerPrediction():
+    '''The trigger prediction class uses task specific event triggers to determine the current subgoal
+    Args:
+        mode (int): 0 is off, 1 is static alpha, 2 is dynamic alpha
+        sg_model (list: dicts): list of subgoal model dicts, see example below
+        alpha (float): BSC blending parameter preset for static mode
+    Example arg sg_model:
+        sg_model = [{'subgoal': 1,
+                     'it': [3, -0.5]                            * Joystick index 3 (swing) move past halfway left
+                     'subgoal_pos': [6.75, 0.91, 9.95, 1.41]    * Over the pile (actuator space coordinates)
+                     'npt': [3, 3, 3, 0.2]}                     * +/- each of these values forms boundary around subgoal
+                     'onpt': []},                               * Not yet implemented
+                    {'subgoal': 2, ...
+                    ...}]
+    Attributes:
+        mode (int): see above
+        subgoal_model (obj):
+        endpoints (list, floats): endpoints for the current task
+        confidence (float): probability that current task is nominal
+        blend_threshold (float): mininum confidence to initiate blending
+        alpha (float): BSC blending parameter alpha
+        subgoal (int): current triggered subgoal
+        prev
+        regen (bool): flag to regenerate trajectories
+        active (bool): assistance active
+        history: primitives and endpoints from recent history (window TBD, not yet implemented)
+    ToDo:
+        numpy and optimize, clean up attributes
+    '''
+    def __init__(self, sg_model, mode=1, alpha=0):
+        self.mode = mode
+        self.alpha = alpha
+        self.sg_model = sg_model
+        # if self.mode == 0:  # Blending off
+        #     self.alpha = 0
+        # elif self.mode == 1:  # Static alpha subgoal predictive
+        #     self.alpha = alpha
+        # elif self.mode == 2:  # Static blending with input responsive on and off states
+        #     self.alpha = alpha
+        # # elif self.mode == 3:
+        self.dispatch = {0: self.update_0,  # Deterministic spatial prediction
+                         1: self.update_1}  # Deterministic with input triggers
+            #  We will see what goes here
+        self.subgoal = 0            # Subgoal 0 denotes no subgoal to start
+        self.prev = 6
+        self.active = False         # Active is bool, False means no assistance to start
+        self.regen = True
+        # Important: build a list of the subgoals for iterating
+        self.sg_list = [self.sg_model[i]['subgoal'] for i in range(len(self.sg_model[0]))]
+
+    def update(self, js_inputs, ms_values):
+        return self.dispatch[self.mode](js_inputs, ms_values)
+
+    def update_0(self, js_inputs, ms_values):
+        # Look for a terminating cue
+        for sg in self.sg_model:
+            # Are we in a termination set?
+            termination = ([abs(ms_values[i] - sg['subgoal_pos'][i]) < sg['npt'][i] for i in range(4)] == [True]*4)
+            # Is this termination set different from our previous subgoal termination?
+            # I.e., we don't want to reterminate in the same set over and over.
+            different = (sg['subgoal'] != self.prev)
+            if termination and different:
+                print('Terminated: ', sg['subgoal'])
+                self.prev = sg['subgoal']
+                self.subgoal = (sg['subgoal'] % len(self.sg_list)) + 1  # i = (i % length) + 1 (some magic)
+                self.regen = True
+                self.active = False
+
+    def update_1(self, js_inputs, ms_values):
+        '''Poll event triggers and update subgoal and/or active boolean.
+        TODO:
+            fix sloppy indexing into sg_model, subgoals index from 1
+        Args:
+            js_inputs (list: float): a list of js_inputs in the form [BM, SK, BK, SW]
+            ms_values (list: float): listed measurement values for each actuator
+        Returns:
+            subgoal (int)
+            active (bool)
+        '''
+        # Look for a terminating cue
+        for sg in self.sg_model:
+            # Are we in a termination set?
+            termination = ([abs(ms_values[i] - sg['subgoal_pos'][i]) < sg['npt'][i] for i in range(4)] == [True]*4)
+            # Is this termination set different from our previous subgoal termination?
+            # I.e., we don't want to reterminate in the same set over and over.
+            different = (sg['subgoal'] != self.prev)
+            if termination and different:
+                print('Terminated: ', sg['subgoal'])
+                self.prev = sg['subgoal']
+                self.subgoal = (sg['subgoal'] + 1) % len(self.sg_list)  # i = (i % length) + 1 (some magic)
+                self.regen = True
+                self.active = False
+        less_than = ((js_inputs[self.sg_model[self.subgoal-1]['it'][0]] < self.sg_model[self.subgoal-1]['it'][1]))
+        # print less_than
+        negative = ((self.sg_model[self.subgoal-1]['it'][1]) < 0)
+        # print negative
+        if not (less_than != negative):  # If input < threshold and threshold negative, or > = threshold and threshold positive
+            self.active = True
+            print(self.subgoal, 'Ass: True')
+        elif self.mode == 2:
+            self.active = False
+        return self.subgoal, self.active
